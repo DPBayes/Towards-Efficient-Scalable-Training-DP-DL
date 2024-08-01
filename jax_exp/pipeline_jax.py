@@ -362,6 +362,8 @@ class TrainerModule:
                         avg_loss = float(jnp.mean(metrics['loss']))
                         avg_acc = float(jnp.mean(metrics['acc']))
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
+                        print('Accuracy values',metrics['acc'])
+                        print('Loss values',metrics['loss'])
                         add_scalar_dict(self.logger,f'train_batch_stats',{'acc':avg_acc,'loss':avg_loss},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
                         metrics['loss'] = jnp.array([])
                         metrics['acc'] = jnp.array([])
@@ -701,7 +703,9 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
 
     transformation = torchvision.transforms.Compose([
         torchvision.transforms.Resize(dimension),
-        image_to_numpy_wo_t,
+        #image_to_numpy_wo_t,
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Normalize(DATA_MEANS,DATA_STD),
     ])
     
     if ten==10:
