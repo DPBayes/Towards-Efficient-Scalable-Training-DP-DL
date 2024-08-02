@@ -544,6 +544,14 @@ class TrainerModule:
         eval_acc = np.mean(accs)
         eval_loss = np.mean(losses)
         return eval_loss,eval_acc
+    
+    def print_param_shapes(self,params, prefix=''):
+        for key, value in params.items():
+            if isinstance(value, dict):
+                print(f"{prefix}{key}:")
+                self.print_param_shapes(value, prefix + '  ')
+            else:
+                print(f"{prefix}{key}: {value.shape}")
       
     def load_model(self):
         print('load model name',self.model_name,flush=True)
@@ -596,7 +604,7 @@ class TrainerModule:
             #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
             params = variables['params']
             params['vit'] = vars['params']
-            print(params)
+            self.print_param_shapes(params)
             model.apply({'params':params},x)
             self.model = model
             self.params = params
