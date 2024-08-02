@@ -596,6 +596,7 @@ class TrainerModule:
             #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
             params = variables['params']
             params['vit'] = vars['params']
+            print(params)
             model.apply({'params':params},x)
             self.model = model
             self.params = params
