@@ -323,6 +323,7 @@ class TrainerModule:
                 print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler))
                 for batch_idx, batch in enumerate(memory_safe_data_loader): 
                     with self.collector(tag='batch'):
+                        print(batch[0][0].shape)
                         samples_used += len(batch[0])
                         sample_sizes.append(len(batch[0]))
                         start_time = time.time()
@@ -703,9 +704,9 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
 
     transformation = torchvision.transforms.Compose([
         torchvision.transforms.Resize(dimension),
-        #image_to_numpy_wo_t,
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize(DATA_MEANS,DATA_STD),
+        image_to_numpy_wo_t,
+        #torchvision.transforms.ToTensor(),
+        #torchvision.transforms.Normalize(DATA_MEANS,DATA_STD),
     ])
     
     if ten==10:
