@@ -589,7 +589,7 @@ class TrainerModule:
             config = module.config
             model = ViTModelHead(num_classes=self.num_classes,vit=module)
 
-            input_shape = (1,self.dimension,self.dimension,3)
+            input_shape = (1,3,self.dimension,self.dimension)
             #But then, we need to split it in order to get random numbers
             
 
@@ -601,10 +601,13 @@ class TrainerModule:
             #Initialize the model
             variables = model.init({'params':init_rng},x)
             
+            print(type(model.params))
+
             #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
             params = variables['params']
             params['vit'] = vars['params']
             self.print_param_shapes(params)
+            print(model.params)
             model.apply({'params':params},x)
             self.model = model
             self.params = params
@@ -661,7 +664,8 @@ def image_to_numpy(img):
 
 def image_to_numpy_wo_t(img):
     img = np.array(img, dtype=np.float32)
-    img = (img / 255. - DATA_MEANS) / DATA_STD
+    img = ((img / 255.) - DATA_MEANS) / DATA_STD
+    img = np.transpose(img,[2,0,1])
     return img
 
 def numpy_collate(batch):
