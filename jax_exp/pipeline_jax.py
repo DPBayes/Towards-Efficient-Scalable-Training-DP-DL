@@ -601,8 +601,6 @@ class TrainerModule:
             main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
             #Initialize the model
             variables = model.init({'params':init_rng},x)
-            
-            print(type(model.params))
 
             #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
             params = variables['params']
