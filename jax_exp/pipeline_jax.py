@@ -345,10 +345,9 @@ class TrainerModule:
                         if not flag._check_skip_next_step():
                             self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                             gradient_step_ac += 1
-                            print('flag queue',flag.skip_queue)
-                            #print('here the step should be taken, the opt state:',self.opt_state.gradient_step,'count',gradient_step_ac)
                             print('batch_idx',batch_idx)
-                            print(type(self.opt_state))
+                            print('flag queue',flag.skip_queue)
+                            print('count',gradient_step_ac)
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                             
 
@@ -381,15 +380,17 @@ class TrainerModule:
                         metrics['acc'] = jnp.array([])
                         add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
             
+            print('-------------End Epoch---------------',flush=True)
+            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
+            print('steps',steps,'gradient acc steps',gradient_step_ac,flush=True)
+
             if epoch == 1:
                 print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
 
             epoch_time = time.time() - start_time_epoch
 
-            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
-
             eval_loss, eval_acc = self.eval_model(testloader)
-            print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss)
+            print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss,flush=True)
             add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},global_step=epoch)
 
             epsilon = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
