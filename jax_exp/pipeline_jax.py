@@ -328,6 +328,7 @@ class TrainerModule:
                         sample_sizes.append(len(batch[0]))
                         start_time = time.time()
                         grads,loss,accu,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
+                        print('num_clipped at',batch_idx,':',num_clipped)
                         acc_grads = jax.tree_util.tree_map(
                             functools.partial(_acc_update),
                             grads, acc_grads)
