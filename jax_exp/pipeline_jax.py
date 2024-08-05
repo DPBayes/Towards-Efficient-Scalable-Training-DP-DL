@@ -220,6 +220,14 @@ class TrainerModule:
         self.opt_state  = self.optimizer.init(self.params)
 
         #print('self opt after init',self.opt_state)
+        
+    
+    def calculate_metrics(self,params,batch):
+        inputs,targets = batch
+        logits = self.model.apply({'params':params},inputs)
+        predicted_class = jnp.argmax(logits,axis=-1)
+        acc = jnp.mean(predicted_class==targets)
+        return acc
     
     def loss(self,params,batch):
         inputs,targets = batch
@@ -237,11 +245,13 @@ class TrainerModule:
         logits = self.model.apply({'params':params},inputs)
         predicted_class = jnp.argmax(logits,axis=-1)
 
-        cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
-
+        cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
+        print('cross_losses:',cross_losses)
+        cross_loss = jnp.mean(cross_losses)
         acc = (predicted_class==targets).mean()
         
-        print(targets,predicted_class)
+        print('targets',targets)
+        print('predicted class',predicted_class)
 
         #jax.debug.breakpoint()
 
