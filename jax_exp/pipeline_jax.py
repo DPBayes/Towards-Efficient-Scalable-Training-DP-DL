@@ -606,7 +606,7 @@ class TrainerModule:
             params = variables['params']
             params['vit'] = vars['params']
             self.print_param_shapes(params)
-            print(model.params)
+            print(params)
             model.apply({'params':params},x)
             self.model = model
             self.params = params
