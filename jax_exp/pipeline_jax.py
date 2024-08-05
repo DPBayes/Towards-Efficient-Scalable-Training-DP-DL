@@ -199,7 +199,7 @@ class TrainerModule:
         #print('self opt after init',self.opt_state)
 
     def init_with_chain2(self,size,sample_rate):
-        #print('init optimizer, size ',size)
+        print('init optimizer, size ',size)
 
         expected_bs = (size * sample_rate)
 
@@ -208,7 +208,7 @@ class TrainerModule:
 
         #expected_acc_steps = expected_bs // self.physical_bs
 
-        #print('expected acc steps',expected_acc_steps)
+        print('expected batch size',expected_bs)
 
         self.optimizer = optax.chain(
             add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
@@ -230,8 +230,6 @@ class TrainerModule:
 
         acc = (predicted_class==targets).mean()
 
-        #jax.debug.breakpoint()
-
         return cross_loss,acc
 
     def loss_eval(self,params,batch):
@@ -242,6 +240,8 @@ class TrainerModule:
         cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
 
         acc = (predicted_class==targets).mean()
+        
+        print(targets,predicted_class)
 
         #jax.debug.breakpoint()
 
@@ -323,12 +323,12 @@ class TrainerModule:
                 print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler))
                 for batch_idx, batch in enumerate(memory_safe_data_loader): 
                     with self.collector(tag='batch'):
-                        print(batch[0][0].shape)
+                        #print(batch[0][0].shape)
                         samples_used += len(batch[0])
                         sample_sizes.append(len(batch[0]))
                         start_time = time.time()
                         grads,loss,accu,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
-                        print('num_clipped at',batch_idx,':',num_clipped)
+                        #print('num_clipped at',batch_idx,':',num_clipped)
                         acc_grads = jax.tree_util.tree_map(
                             functools.partial(_acc_update),
                             grads, acc_grads)
@@ -382,8 +382,6 @@ class TrainerModule:
             print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss)
             add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},global_step=epoch)
 
-
-        
             epsilon = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
             
             privacy_results = {'eps_rdp':epsilon}
@@ -606,7 +604,7 @@ class TrainerModule:
             params = variables['params']
             params['vit'] = vars['params']
             self.print_param_shapes(params)
-            print(params)
+            #print(params)
             model.apply({'params':params},x)
             self.model = model
             self.params = params
