@@ -588,7 +588,7 @@ class TrainerModule:
             module = model.module # Extract the Flax Module
             vars = {'params': model.params} # Extract the parameters
             config = module.config
-            model = ViTModelHead(num_classes=self.num_classes,vit=module)
+            model = ViTModelHead(num_classes=self.num_classes,vit=module,pretrained_model=model)
 
             input_shape = (1,3,self.dimension,self.dimension)
             #But then, we need to split it in order to get random numbers
