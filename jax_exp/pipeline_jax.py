@@ -127,7 +127,7 @@ class TrainerModule:
         self.physical_bs = physical_bs
         self.dataset_size = dataset_size
 
-        timestamp = datetime.now().strftime('%Y%m%d')
+        timestamp = datetime.now().strftime('%Y%m%d%M')
         print('model at time: ',timestamp,flush=True)
         self.logger = SummaryWriter('runs/{}_{}_cifar_{}_model_{}_{}'.format(test,clipping_mode,num_classes,model_name,timestamp),flush_secs=30)
         self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
