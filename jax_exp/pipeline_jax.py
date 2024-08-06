@@ -567,8 +567,8 @@ class TrainerModule:
             loss, acc = self.eval_step_non(self.params,batch)
             accs.append(float(acc))
             losses.append(float(loss))
-        eval_acc = jnp.mean(accs)
-        eval_loss = jnp.mean(losses)
+        eval_acc = jnp.mean(jnp.array(accs))
+        eval_loss = jnp.mean(jnp.array(losses))
         return eval_loss,eval_acc
     
     def print_param_shapes(self,params, prefix=''):

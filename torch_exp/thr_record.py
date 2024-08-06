@@ -54,6 +54,7 @@ if __name__ == '__main__':
     t_th = None
     try:
         world_size = torch.cuda.device_count()
+        print(world_size)
         mp.spawn(main, args=(world_size,port, args), nprocs=world_size)
         #thr,t_th,accs = main(args)
         # thr = np.mean(thr)
