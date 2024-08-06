@@ -210,6 +210,8 @@ class TrainerModule:
 
         print('expected batch size',expected_bs)
 
+        print('noise multiplier',self.noise_multiplier,'max grad norm',self.max_grad_norm,'noise',self.noise_multiplier*self.max_grad_norm)
+
         self.optimizer = optax.chain(
             add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
             optax.adam(learning_rate=self.lr)
@@ -246,12 +248,12 @@ class TrainerModule:
         predicted_class = jnp.argmax(logits,axis=-1)
 
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
-        print('cross_losses:',cross_losses)
+        #print('cross_losses:',cross_losses)
         cross_loss = jnp.mean(cross_losses)
         acc = (predicted_class==targets).mean()
         
-        print('targets',targets)
-        print('predicted class',predicted_class)
+        #print('targets',targets)
+        #print('predicted class',predicted_class)
 
         #jax.debug.breakpoint()
 
@@ -343,6 +345,7 @@ class TrainerModule:
                             functools.partial(_acc_update),
                             grads, acc_grads)
                         if not flag._check_skip_next_step():
+                            print('about to update:')
                             self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                             gradient_step_ac += 1
                             print('batch_idx',batch_idx)
