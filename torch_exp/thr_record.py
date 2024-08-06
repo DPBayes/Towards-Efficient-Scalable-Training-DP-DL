@@ -1,12 +1,11 @@
 import argparse
-from pipeline_torch import main
+from pipeline_torch_wc import main
 import os
 import csv
 import numpy as np
 import torch
 import torch.multiprocessing as mp
 import socket
-import torch.distributed as dist
 
 
 def get_free_port():
@@ -55,12 +54,11 @@ if __name__ == '__main__':
     t_th = None
     try:
         world_size = torch.cuda.device_count()
-        dist.init_process_group(backend='nccl')
-        world_size = dist.get_world_size()
-        local_rank = int(os.environ['LOCAL_RANK'])
-        rank = int(os.environ['RANK'])
-        torch.cuda.set_device(local_rank)
-        main(local_rank,rank,world_size,args)
+        mp.spawn(main, args=(world_size,port, args), nprocs=world_size)
+        #thr,t_th,accs = main(args)
+        # thr = np.mean(thr)
+        # acc = np.mean(accs)
+        # t_th = np.mean(t_th)
         err = 'None'
     except RuntimeError as e:
         print(e)
