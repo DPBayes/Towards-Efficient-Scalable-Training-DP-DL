@@ -1,5 +1,5 @@
 import argparse
-from pipeline_torch_wc import main
+from pipeline_torch import main
 import os
 import csv
 import numpy as np
