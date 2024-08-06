@@ -493,11 +493,14 @@ class TrainerModule:
                             functools.partial(_acc_update),
                             grads, acc_grads)
                         if not flag._check_skip_next_step():
+                            print('about to update:')
+                            old_params = self.params
                             self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
                             gradient_step_ac += 1
                             print('flag queue',flag.skip_queue)
                             #print('here the step should be taken, the opt state:',self.opt_state.gradient_step,'count',gradient_step_ac)
                             print('batch_idx',batch_idx)
+                            self.print_param_change(old_params,self.params)
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                                                         
                         batch_time = time.time() - start_time
