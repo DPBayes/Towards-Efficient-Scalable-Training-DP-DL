@@ -238,7 +238,7 @@ class TrainerModule:
 
         cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
 
-        acc = (predicted_class==targets).mean()
+        acc = jnp.mean(predicted_class==targets)
 
         return cross_loss,acc
 
@@ -250,7 +250,7 @@ class TrainerModule:
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
         #print('cross_losses:',cross_losses)
         cross_loss = jnp.mean(cross_losses)
-        acc = (predicted_class==targets).mean()
+        acc = jnp.mean(predicted_class==targets)
         
         #print('targets',targets)
         #print('predicted class',predicted_class)
@@ -293,6 +293,14 @@ class TrainerModule:
         (loss_val,acc), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
         return grads,loss_val,acc
     
+    def print_param_change(self,old_params, new_params):
+        for (old_k, old_v), (new_k, new_v) in zip(old_params.items(), new_params.items()):
+            if isinstance(old_v, dict):
+                self.print_param_change(old_v, new_v)
+            else:
+                diff = jnp.abs(new_v - old_v).mean()
+                print(f"Param {old_k} mean absolute change: {diff}")
+        
     def private_training_mini_batch_2(self,trainloader,testloader):
 
         #Training
@@ -346,11 +354,13 @@ class TrainerModule:
                             grads, acc_grads)
                         if not flag._check_skip_next_step():
                             print('about to update:')
+                            old_params = self.params
                             self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                             gradient_step_ac += 1
                             print('batch_idx',batch_idx)
                             print('flag queue',flag.skip_queue)
                             print('count',gradient_step_ac)
+                            self.print_param_change(old_params,self.params)
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                             
 
@@ -554,8 +564,8 @@ class TrainerModule:
             loss, acc = self.eval_step_non(self.params,batch)
             accs.append(float(acc))
             losses.append(float(loss))
-        eval_acc = np.mean(accs)
-        eval_loss = np.mean(losses)
+        eval_acc = jnp.mean(accs)
+        eval_loss = jnp.mean(losses)
         return eval_loss,eval_acc
     
     def print_param_shapes(self,params, prefix=''):
