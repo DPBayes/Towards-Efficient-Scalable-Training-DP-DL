@@ -779,9 +779,9 @@ def main(args):
     #Create Trainer Module, that loads the model and train it
     trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode)
     if args.clipping_mode == 'non-private':
-        throughputs,throughputs_t,comp_time,privacy_measures = trainer.non_private_training_mini_batch_2(trainloader,testloader)
+        throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch_2(trainloader,testloader)
     elif args.clipping_mode == 'mini':
-        throughputs,throughputs_t,comp_time = trainer.private_training_mini_batch_2(trainloader,testloader)
+        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_2(trainloader,testloader)
     tloss,tacc = trainer.eval_model(testloader)
     print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
     print('compiling time',comp_time)
