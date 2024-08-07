@@ -154,8 +154,12 @@ class TrainerModule:
         accountant.compose(
             dp_event.PoissonSampledDpEvent(
                 q, dp_event.GaussianDpEvent(noise_multiplier)), steps)
-        return accountant.get_epsilon(target_delta)
+        
+        epsilon = accountant.get_epsilon(target_delta)
+        delta = accountant.get_delta(epsilon)
 
+        return epsilon,delta
+    
     def set_loaders(self,train_loader,test_loader):
         self.train_loader = train_loader
         self.test_loader = test_loader
@@ -406,9 +410,9 @@ class TrainerModule:
             print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss,flush=True)
             add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},global_step=epoch)
 
-            epsilon = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
+            epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
             
-            privacy_results = {'eps_rdp':epsilon}
+            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             add_scalar_dict(self.logger,'train_epoch_privacy',privacy_results,global_step=epoch)
             print('privacy results',privacy_results)
 
@@ -437,12 +441,12 @@ class TrainerModule:
             print('Epoch {} Total time {} Throughput {} Samples Used {}'.format(epoch,total_time_epoch,throughput,samples_used),flush=True)  
         
         
-        epsilon = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
+        epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
         
-        privacy_results = {'eps_rdp':epsilon}
-        print('privacy results',privacy_results)
+        privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+        print('privacy results',privacy_results,flush=True)
         print('Finish training',flush=True)
-        return throughputs,throughputs_t,comp_time
+        return throughputs,throughputs_t,comp_time,privacy_results
     
     def non_private_training_mini_batch_2(self,trainloader,testloader):
 
@@ -775,7 +779,7 @@ def main(args):
     #Create Trainer Module, that loads the model and train it
     trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode)
     if args.clipping_mode == 'non-private':
-        throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch_2(trainloader,testloader)
+        throughputs,throughputs_t,comp_time,privacy_measures = trainer.non_private_training_mini_batch_2(trainloader,testloader)
     elif args.clipping_mode == 'mini':
         throughputs,throughputs_t,comp_time = trainer.private_training_mini_batch_2(trainloader,testloader)
     tloss,tacc = trainer.eval_model(testloader)
