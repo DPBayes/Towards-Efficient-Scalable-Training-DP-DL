@@ -129,7 +129,7 @@ class TrainerModule:
 
         timestamp = datetime.now().strftime('%Y%m%d%M')
         print('model at time: ',timestamp,flush=True)
-        self.logger = SummaryWriter('runs/{}_{}_cifar_{}_model_{}_{}'.format(test,clipping_mode,num_classes,model_name,timestamp),flush_secs=30)
+        self.logger = SummaryWriter('runs/{}_{}_cifar_{}_epsilon_{}_model_{}_{}'.format(test,clipping_mode,num_classes,target_epsilon,model_name,timestamp),flush_secs=30)
         self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
                                             root_pids={os.getpid()},
                                             interval=1.0)
@@ -242,9 +242,11 @@ class TrainerModule:
 
         cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
 
-        acc = jnp.mean(predicted_class==targets)
+        vals = predicted_class == targets
+        acc = jnp.mean(vals)
+        cor = jnp.sum(vals)
 
-        return cross_loss,acc
+        return cross_loss,acc,cor
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
@@ -254,29 +256,30 @@ class TrainerModule:
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
         #print('cross_losses:',cross_losses)
         cross_loss = jnp.mean(cross_losses)
-        acc = jnp.mean(predicted_class==targets)
-        
+        vals = predicted_class == targets
+        acc = jnp.mean(vals)
+        cor = jnp.sum(vals)
         #print('targets',targets)
         #print('predicted class',predicted_class)
 
         #jax.debug.breakpoint()
 
-        return cross_loss,acc
+        return cross_loss,acc,cor
     
     #@partial(jit,static_argnums=0)
     def eval_step_non(self, params, batch):
         # Return the accuracy for a single batch
         #batch = jax.tree_map(lambda x: x[:, None], batch)
-        loss,acc =self.loss_eval(params,batch)
+        loss,acc,cor =self.loss_eval(params,batch)
         #loss, acc= self.loss_2(self.params, batch)
-        return loss, acc
+        return loss, acc,cor
     
     @partial(jit, static_argnums=0)
     def mini_batch_dif_clip2(self,batch,params,l2_norm_clip):
         
         batch = jax.tree_map(lambda x: x[:, None], batch)
         
-        (loss_val,acc), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
+        (loss_val,acc,cor), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
         
         grads_flat, grads_treedef = jax.tree_util.tree_flatten(per_example_grads)
 
@@ -284,7 +287,7 @@ class TrainerModule:
 
         grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
 
-        return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),num_clipped
+        return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),cor,num_clipped
 
     @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
@@ -294,8 +297,8 @@ class TrainerModule:
     
     @partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
-        (loss_val,acc), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
-        return grads,loss_val,acc
+        (loss_val,acc,cor), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
+        return grads,loss_val,acc,cor
     
     def print_param_change(self,old_params, new_params):
         for (old_k, old_v), (new_k, new_v) in zip(old_params.items(), new_params.items()):
@@ -337,6 +340,13 @@ class TrainerModule:
             sample_sizes = []
 
             steps = int(epoch * expected_acc_steps)
+            
+            train_loss = 0
+            correct = 0
+            total = 0
+            total_batch = 0
+            correct_batch = 0
+            batch_idx = 0
 
             print('steps',steps,flush=True)
             with MyBatchMemoryManager(
@@ -351,7 +361,7 @@ class TrainerModule:
                         samples_used += len(batch[0])
                         sample_sizes.append(len(batch[0]))
                         start_time = time.time()
-                        grads,loss,accu,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
+                        grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
                         #print('num_clipped at',batch_idx,':',num_clipped)
                         acc_grads = jax.tree_util.tree_map(
                             functools.partial(_acc_update),
@@ -369,6 +379,11 @@ class TrainerModule:
                             
 
                         batch_time = time.time() - start_time
+
+                        train_loss += loss
+                        total_batch += len(batch[1])
+                        correct_batch += cor
+
 
                         add_scalar_dict(self.logger, #type: ignore
                                         'train_batch_memorystats',
@@ -396,10 +411,16 @@ class TrainerModule:
                         metrics['loss'] = jnp.array([])
                         metrics['acc'] = jnp.array([])
                         add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-            
+                        total += total_batch
+                        correct += correct_batch
+                        total_batch = 0
+                        correct_batch = 0
+
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
             print('steps',steps,'gradient acc steps',gradient_step_ac,flush=True)
+            print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
 
             if epoch == 1:
                 print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
@@ -479,6 +500,13 @@ class TrainerModule:
             batch_times = []
 
             steps = int(epoch * expected_acc_steps)
+            
+            train_loss = 0
+            correct = 0
+            total = 0
+            total_batch = 0
+            correct_batch = 0
+            batch_idx = 0
 
             print('steps',steps,flush=True)
             with MyBatchMemoryManager(
@@ -492,7 +520,7 @@ class TrainerModule:
                         samples_used += len(batch[0])
                         #print(samples_used)
                         start_time = time.time()
-                        grads,loss,accu = jax.block_until_ready(self.non_private_update(self.params,batch))
+                        grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                         acc_grads = jax.tree_util.tree_map(
                             functools.partial(_acc_update),
                             grads, acc_grads)
@@ -508,6 +536,10 @@ class TrainerModule:
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                                                         
                         batch_time = time.time() - start_time
+                        
+                        train_loss += loss
+                        total_batch += len(batch[1])
+                        correct_batch += cor
                         
 
                         add_scalar_dict(self.logger, #type: ignore
@@ -533,6 +565,17 @@ class TrainerModule:
                         metrics['loss'] = jnp.array([])
                         metrics['acc'] = jnp.array([])
                         add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)            
+                        total += total_batch
+                        correct += correct_batch
+                        total_batch = 0
+                        correct_batch = 0
+            
+            print('-------------End Epoch---------------',flush=True)
+            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
+            print('steps',steps,'gradient acc steps',gradient_step_ac,flush=True)
+            print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
+            
             if epoch == 1:
                 print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
 
@@ -567,13 +610,22 @@ class TrainerModule:
         # Test model on all images of a data loader and return avg loss
         accs = []
         losses = []
+        test_loss = 0
+        total_test = 0
+        correct_test = 0
         for batch in data_loader:
-            loss, acc = self.eval_step_non(self.params,batch)
+            loss, acc,cor = self.eval_step_non(self.params,batch)
+            test_loss += loss
+            correct_test += cor
+            total_test += len(batch[1])
             accs.append(float(acc))
             losses.append(float(loss))
+            del batch
         eval_acc = jnp.mean(jnp.array(accs))
         eval_loss = jnp.mean(jnp.array(losses))
-        return eval_loss,eval_acc
+
+        #return eval_loss,eval_acc
+        return test_loss,correct_test/total_test
     
     def print_param_shapes(self,params, prefix=''):
         for key, value in params.items():
