@@ -415,6 +415,8 @@ class TrainerModule:
                         correct += correct_batch
                         total_batch = 0
                         correct_batch = 0
+                        print('(New)Accuracy values',100.*(correct/total))
+                        print('(New)Loss values',train_loss)
 
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
@@ -429,7 +431,8 @@ class TrainerModule:
 
             eval_loss, eval_acc = self.eval_model(testloader)
             print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss,flush=True)
-            add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},global_step=epoch)
+
+            add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss),'accuracy train':float(100.*correct/total),'loss train':float(train_loss)},global_step=epoch)
 
             epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
             
@@ -569,6 +572,8 @@ class TrainerModule:
                         correct += correct_batch
                         total_batch = 0
                         correct_batch = 0
+                        print('(New)Accuracy values',100.*(correct/total))
+                        print('(New)Loss values',train_loss)
             
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
@@ -585,7 +590,7 @@ class TrainerModule:
 
             eval_loss, eval_acc = self.eval_model(testloader)
             print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss)
-            add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},global_step=epoch)
+            add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss),'accuracy train':float(100.*correct/total),'loss train':float(train_loss)},global_step=epoch)
 
             throughput_t = (samples_used)/epoch_time
             throughput = (samples_used)/total_time_epoch
