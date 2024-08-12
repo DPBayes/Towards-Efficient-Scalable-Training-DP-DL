@@ -330,8 +330,8 @@ class TrainerModule:
             flag = EndingLogicalBatchSignal()
             batch_idx = 0
             metrics = {}
-            metrics['loss'] = jnp.array([])
-            metrics['acc'] = jnp.array([])
+            metrics['loss'] = np.array([])
+            metrics['acc'] = np.array([])
             
             total_time_epoch = 0
             samples_used = 0 
@@ -416,9 +416,9 @@ class TrainerModule:
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
                         add_scalar_dict(self.logger,f'train_batch_stats',{'acc':100.*correct_batch/total_batch,'loss':avg_loss},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        metrics['loss'] = jnp.array([])
                         print('Update metrics')
-                        metrics['acc'] = jnp.array([])
+                        metrics['loss'] = np.array([])
+                        metrics['acc'] = np.array([])
                         add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
                         
                         total_batch = 0
