@@ -404,6 +404,10 @@ class TrainerModule:
                         
                         avg_loss = float(jnp.mean(metrics['loss']))
                         avg_acc = float(jnp.mean(metrics['acc']))
+                        print('(New)Accuracy values',100.*(correct/total))
+                        print('(New)Loss values',train_loss)
+                        avg_acc = 100.*(correct/total)
+                        avg_loss = train_loss/total
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
@@ -415,8 +419,7 @@ class TrainerModule:
                         correct += correct_batch
                         total_batch = 0
                         correct_batch = 0
-                        print('(New)Accuracy values',100.*(correct/total))
-                        print('(New)Loss values',train_loss)
+                        
 
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
