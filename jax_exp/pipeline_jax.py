@@ -410,12 +410,13 @@ class TrainerModule:
                         correct_batch = 0
                         print('(New)Accuracy values',100.*(correct/total))
                         print('(New)Loss values',train_loss)
-                        avg_acc = 100.*(correct/total)
-                        avg_loss = train_loss/total
+                        #avg_acc = 100.*(correct/total)
+                        #avg_loss = train_loss/total
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
-                        add_scalar_dict(self.logger,f'train_batch_stats',{'acc':avg_acc,'loss':avg_loss},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        add_scalar_dict(self.logger,f'train_batch_stats',{'acc':100.*correct_batch/total_batch,'loss':avg_loss},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
                         metrics['loss'] = jnp.array([])
                         metrics['acc'] = jnp.array([])
                         add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
