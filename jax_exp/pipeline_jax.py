@@ -246,7 +246,7 @@ class TrainerModule:
         acc = jnp.mean(vals)
         cor = jnp.sum(vals)
 
-        return cross_loss,acc,cor
+        return cross_loss,(acc,cor)
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
