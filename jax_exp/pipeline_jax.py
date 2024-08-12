@@ -623,14 +623,14 @@ class TrainerModule:
             test_loss += loss
             correct_test += cor
             total_test += len(batch[1])
-            accs.append(float(acc))
+            accs.append(cor/len(batch[1]))
             losses.append(float(loss))
             del batch
         eval_acc = jnp.mean(jnp.array(accs))
         eval_loss = jnp.mean(jnp.array(losses))
 
         #return eval_loss,eval_acc
-        return test_loss,correct_test/total_test
+        return test_loss,100.*correct_test/total_test
     
     def print_param_shapes(self,params, prefix=''):
         for key, value in params.items():
