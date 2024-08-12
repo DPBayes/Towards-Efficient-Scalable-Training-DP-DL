@@ -407,7 +407,7 @@ class TrainerModule:
                         total += total_batch
                         correct += correct_batch
                         
-                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
+                        print('(New)Accuracy values',100.*(correct/total))
                         print('(New)Loss values',train_loss)
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
@@ -418,10 +418,10 @@ class TrainerModule:
                         try:
                             add_scalar_dict(self.logger,
                                         f'train_batch_stats',
-                                        {'acc':100.*correct_batch/total_batch,
+                                        {'acc':float(100.*correct/total),
                                          'loss':avg_loss}
                                          ,global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        except:
+                        except Exception:
                             print('what is happening')
                         print('Update metrics')
                         metrics['loss'] = np.array([])
