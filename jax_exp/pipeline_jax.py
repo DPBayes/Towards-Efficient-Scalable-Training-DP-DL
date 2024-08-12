@@ -279,7 +279,7 @@ class TrainerModule:
         
         batch = jax.tree_map(lambda x: x[:, None], batch)
         
-        (loss_val,acc,cor), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
+        (loss_val,(acc,cor)), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
         
         grads_flat, grads_treedef = jax.tree_util.tree_flatten(per_example_grads)
 
@@ -287,7 +287,7 @@ class TrainerModule:
 
         grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
 
-        return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),cor,num_clipped
+        return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
 
     @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
@@ -297,7 +297,7 @@ class TrainerModule:
     
     @partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
-        (loss_val,acc,cor), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
+        (loss_val,(acc,cor)), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
         return grads,loss_val,acc,cor
     
     def print_param_change(self,old_params, new_params):
