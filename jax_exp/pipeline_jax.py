@@ -671,13 +671,23 @@ class TrainerModule:
                     x = x.reshape((x.shape[0], -1))  # flatten
                     x = nn.Dense(features=256)(x)
                     x = nn.relu(x)
-                    x = nn.Dense(features=10)(x)
+                    x = nn.Dense(features=100)(x)
                     return x
 
             model = CNN()
-            batch = jnp.ones((1,self.dimension,self.dimension,3))
-            variables = model.init({'params':main_key}, batch)
-            output = model.apply(variables, batch)
+            input_shape = (1,3,self.dimension,self.dimension)
+            #But then, we need to split it in order to get random numbers
+            
+
+            #The init function needs an example of the correct dimensions, to infer the dimensions.
+            #They are not explicitly writen in the module, instead, the model infer them with the first example.
+            x = jax.random.normal(params_key, input_shape)
+
+            main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
+            #Initialize the model
+            variables = model.init({'params':init_rng},x)
+            #variables = model.init({'params':main_key}, batch)
+            model.apply(variables, x)
             self.model = model
             self.params = variables['params']
         
