@@ -68,7 +68,7 @@ from nvitop import CudaDevice,ResourceMetricCollector
 import models_flax
 import time
 from MyOwnBatchManager import MyBatchMemoryManager,EndingLogicalBatchSignal
-from transform_functions import add_noise
+from transform_functions import add_noise,AddNoiseStateC
 
 def transform_params(params, params_tf, num_classes):
     # BiT and JAX models have different naming conventions, so we need to
@@ -216,8 +216,10 @@ class TrainerModule:
 
         print('noise multiplier',self.noise_multiplier,'max grad norm',self.max_grad_norm,'noise',self.noise_multiplier*self.max_grad_norm)
 
+        noise_state = AddNoiseStateC(self.seed)
+
         self.optimizer = optax.chain(
-            add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
+            noise_state.add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
             optax.adam(learning_rate=self.lr)
         )
         
