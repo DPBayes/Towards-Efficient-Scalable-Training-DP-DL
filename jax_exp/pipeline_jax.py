@@ -291,7 +291,7 @@ class TrainerModule:
 
         return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
 
-    @partial(jit, static_argnums=0)
+    #@partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
         updates,opt_state = self.optimizer.update(grads,opt_state,params)
         params = optax.apply_updates(params,updates)
