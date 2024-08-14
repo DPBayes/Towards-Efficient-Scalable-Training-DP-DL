@@ -27,11 +27,12 @@ def add_noise(
 
   def init_fn(params):
     del params
+    print("Initializing add_noise transformation", flush=True)
     return AddNoiseStateC(rng_key=jax.random.PRNGKey(seed))
 
   def update_fn(updates, state, params=None):  # pylint: disable=missing-docstring
     del params
-    print('inside update function:',noise_std,'expected_bs',expected_bs,'seed',seed)
+    print('inside update function:',noise_std,'expected_bs',expected_bs,'seed',seed,'PRNG key',state.rng_key,flush=True)
     num_vars = len(jax.tree_util.tree_leaves(updates))
     treedef = jax.tree_util.tree_structure(updates)
     new_key,*all_keys = jax.random.split(state.rng_key, num=num_vars + 1)
@@ -41,6 +42,8 @@ def add_noise(
     updates = jax.tree_util.tree_map(
         lambda g, n: (g + noise_std * n)/expected_bs,
         updates, noise)
+    
+    print(f'Noise added. New key: {new_key}', flush=True)
     
     return updates, AddNoiseStateC(rng_key=new_key)
 

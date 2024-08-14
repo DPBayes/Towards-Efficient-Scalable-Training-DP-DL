@@ -216,10 +216,10 @@ class TrainerModule:
 
         print('noise multiplier',self.noise_multiplier,'max grad norm',self.max_grad_norm,'noise',self.noise_multiplier*self.max_grad_norm)
 
-        noise_state = AddNoiseStateC(self.seed)
+        #noise_state = AddNoiseStateC(self.seed)
 
         self.optimizer = optax.chain(
-            noise_state.add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
+            add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
             optax.adam(learning_rate=self.lr)
         )
         
