@@ -129,7 +129,7 @@ class TrainerModule:
 
         timestamp = datetime.now().strftime('%Y%m%d%M')
         print('model at time: ',timestamp,flush=True)
-        self.logger = SummaryWriter('runs/{}_{}_cifar_{}_epsilon_{}_model_{}_{}'.format(test,clipping_mode,num_classes,target_epsilon,model_name,timestamp),flush_secs=30)
+        self.logger = SummaryWriter('runs_{}/{}_{}_cifar_{}_epsilon_{}_model_{}_{}'.format(target_epsilon,test,clipping_mode,num_classes,target_epsilon,model_name,timestamp),flush_secs=30)
         self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
                                             root_pids={os.getpid()},
                                             interval=1.0)
@@ -297,7 +297,7 @@ class TrainerModule:
         params = optax.apply_updates(params,updates)
         return params,opt_state
     
-    @partial(jit, static_argnums=0)
+    #@partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
         (loss_val,(acc,cor)), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
         return grads,loss_val,acc,cor
@@ -387,14 +387,14 @@ class TrainerModule:
                         correct_batch += cor
 
 
-                        add_scalar_dict(self.logger, #type: ignore
-                                        'train_batch_memorystats',
-                                        torch.cuda.memory_stats(),
-                                        global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        add_scalar_dict(self.logger, 
-                                    'resources',      # tag='resources/train/batch/...'
-                                    self.collector.collect(),
-                                    global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        #add_scalar_dict(self.logger, #type: ignore
+                        #                'train_batch_memorystats',
+                        #                torch.cuda.memory_stats(),
+                        #                global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        #add_scalar_dict(self.logger, 
+                        #            'resources',      # tag='resources/train/batch/...'
+                        #            self.collector.collect(),
+                        #            global_step=len(memory_safe_data_loader)*epoch + batch_idx)
 
                         metrics['loss'] = jnp.append(metrics['loss'],float(loss))
                         metrics['acc'] = jnp.append(metrics['acc'],(float(accu)))
@@ -564,10 +564,10 @@ class TrainerModule:
                                         'train_batch_memorystats',
                                         torch.cuda.memory_stats(),
                                         global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        add_scalar_dict(self.logger, 
-                                    'resources',      # tag='resources/train/batch/...'
-                                    self.collector.collect(),
-                                    global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        #add_scalar_dict(self.logger, 
+                        #            'resources',      # tag='resources/train/batch/...'
+                        #            self.collector.collect(),
+                        #            global_step=len(memory_safe_data_loader)*epoch + batch_idx)
                         metrics['loss'] = jnp.append(metrics['loss'],float(loss))
                         metrics['acc'] = jnp.append(metrics['acc'],(float(accu)))
                         #batch_idx += 1
