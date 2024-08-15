@@ -578,17 +578,29 @@ class TrainerModule:
                         
                         avg_loss = float(jnp.mean(metrics['loss']))
                         avg_acc = float(jnp.mean(metrics['acc']))
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
-                        add_scalar_dict(self.logger,f'train_batch_stats',{'acc':avg_acc,'loss':avg_loss},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        metrics['loss'] = jnp.array([])
-                        metrics['acc'] = jnp.array([])
-                        add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)            
                         total += total_batch
                         correct += correct_batch
-                        total_batch = 0
-                        correct_batch = 0
+                        
                         print('(New)Accuracy values',100.*(correct/total))
                         print('(New)Loss values',train_loss)
+                        #avg_acc = 100.*(correct/total)
+                        #avg_loss = train_loss/total
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
+                        print('Accuracy values',metrics['acc'])
+                        print('Loss values',metrics['loss'])
+                        try:
+                            add_scalar_dict(self.logger,
+                                        f'train_batch_stats',
+                                        {'acc':float(100.*correct/total),
+                                         'loss':avg_loss}
+                                         ,global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        except Exception:
+                            print('what is happening')
+                        print('Update metrics')
+                        metrics['loss'] = np.array([])
+                        metrics['acc'] = np.array([])
+                        add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
             
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
