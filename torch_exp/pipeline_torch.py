@@ -681,7 +681,7 @@ def main(local_rank,rank, world_size, args):
     test_accs = np.zeros(args.epochs)
     throughs = np.zeros(args.epochs)
     total_thr = np.zeros(args.epochs)
-    acc_wt = test(device,model,lib,test_loader,criterion,epoch)
+    acc_wt = test(device,model,lib,test_loader,criterion,0)
     print('Without training accuracy',acc_wt)
     for epoch in range(args.epochs):
         print('memory allocated ',torch.cuda.memory_allocated()/1024**2,flush=True)
