@@ -129,7 +129,7 @@ class TrainerModule:
 
         timestamp = datetime.now().strftime('%Y%m%d%M')
         print('model at time: ',timestamp,flush=True)
-        self.logger = SummaryWriter('runs_{}/{}_{}_cifar_{}_epsilon_{}_model_{}_{}'.format(target_epsilon,test,clipping_mode,num_classes,target_epsilon,model_name,timestamp),flush_secs=30)
+        self.logger = SummaryWriter('runs_{}/{}_{}_cifar_{}_epsilon_{}_model_{}_{}_{}'.format(target_epsilon,test,clipping_mode,num_classes,target_epsilon,model_name,timestamp,epochs),flush_secs=30)
         self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
                                             root_pids={os.getpid()},
                                             interval=1.0)
