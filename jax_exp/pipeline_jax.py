@@ -777,6 +777,9 @@ class TrainerModule:
     
 DATA_MEANS = np.array([0.5, 0.5, 0.5])
 DATA_STD = np.array([0.5,0.5, 0.5])
+
+DATA_MEANS2 = (0.485, 0.456, 0.406)
+DATA_STD2 =  (0.229, 0.224, 0.225)
 def image_to_numpy(img):
     img = np.array(img, dtype=np.float32)
     img = (img / 255. - DATA_MEANS) / DATA_STD
@@ -786,7 +789,7 @@ def image_to_numpy(img):
 
 def image_to_numpy_wo_t(img):
     img = np.array(img, dtype=np.float32)
-    img = ((img / 255.) - DATA_MEANS) / DATA_STD
+    img = ((img / 255.) - DATA_MEANS2) / DATA_STD2
     img = np.transpose(img,[2,0,1])
     return img
 
