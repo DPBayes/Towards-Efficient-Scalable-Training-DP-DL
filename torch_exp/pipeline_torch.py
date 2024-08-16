@@ -346,7 +346,7 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
             starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
             starter_t.record()
             size_b = len(inputs)
-            print('Batch size of ',size_b)
+            #print('Batch size of ',size_b)
             samples_used += size_b
             inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
 
