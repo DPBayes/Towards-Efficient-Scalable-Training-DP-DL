@@ -318,7 +318,7 @@ class TrainerModule:
         num_vars = len(jax.tree_util.tree_leaves(updates))
         treedef = jax.tree_util.tree_structure(updates)
         new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-        print('num_vars',num_vars,'updates shape',updates.shape,flush=True)
+        print('num_vars',num_vars,flush=True)
         noise = jax.tree_util.tree_map(
             lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
             updates, jax.tree_util.tree_unflatten(treedef, all_keys))
@@ -326,7 +326,7 @@ class TrainerModule:
             lambda g, n: (g + noise_std * n)/expected_bs,
             updates, noise)
         
-        print('after noise','noise shape',noise.shape,flush=True)
+        print('after noise',noise,flush=True)
         
         return updates, new_key
         
