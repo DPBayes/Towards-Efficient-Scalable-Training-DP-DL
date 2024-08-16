@@ -252,13 +252,15 @@ class TrainerModule:
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':params},inputs)
+        logits = self.model.apply({'params':params},inputs,train=False)
         predicted_class = jnp.argmax(logits,axis=-1)
 
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
         #print('cross_losses:',cross_losses)
+        
+
         cross_loss = jnp.mean(cross_losses)
-        vals = predicted_class == targets
+        vals = (predicted_class > 0.5) == (targets > 0.5) 
         acc = jnp.mean(vals)
         cor = jnp.sum(vals)
         #print('targets',targets)
@@ -309,6 +311,24 @@ class TrainerModule:
             else:
                 diff = jnp.abs(new_v - old_v).mean()
                 print(f"Param {old_k} mean absolute change: {diff}")
+                
+    def add_noise_fn(self,noise_std,expected_bs,rng_key,updates):
+        
+        print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
+        num_vars = len(jax.tree_util.tree_leaves(updates))
+        treedef = jax.tree_util.tree_structure(updates)
+        new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
+        print('num_vars',num_vars,'updates shape',updates.shape,flush=True)
+        noise = jax.tree_util.tree_map(
+            lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+            updates, jax.tree_util.tree_unflatten(treedef, all_keys))
+        updates = jax.tree_util.tree_map(
+            lambda g, n: (g + noise_std * n)/expected_bs,
+            updates, noise)
+        
+        print('after noise','noise shape',noise.shape,flush=True)
+        
+        return updates, new_key
         
     def private_training_mini_batch_2(self,trainloader,testloader):
 
@@ -318,7 +338,8 @@ class TrainerModule:
         _acc_update = lambda grad, acc : grad + acc
 
         self.calculate_noise(len(trainloader))
-        self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
+        #self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
+        self.init_non_optimizer()
         print('noise multiplier',self.noise_multiplier)
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
@@ -370,14 +391,20 @@ class TrainerModule:
                             grads, acc_grads)
                         if not flag._check_skip_next_step():
                             print('about to update:')
+                            
+                            updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,expected_bs,self.rng,acc_grads)
+
                             old_params = self.params
-                            self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
+                            #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
+                            self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
+                            
                             gradient_step_ac += 1
                             print('batch_idx',batch_idx)
                             print('flag queue',flag.skip_queue)
                             print('count',gradient_step_ac)
                             self.print_param_change(old_params,self.params)
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
+                            
                             
 
                         batch_time = time.time() - start_time
