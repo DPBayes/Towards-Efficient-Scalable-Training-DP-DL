@@ -260,7 +260,8 @@ class TrainerModule:
         
 
         cross_loss = jnp.mean(cross_losses)
-        vals = (predicted_class > 0.5) == (targets > 0.5) 
+        #vals = (predicted_class > 0.5) == (targets > 0.5) 
+        vals = predicted_class == targets
         acc = jnp.mean(vals)
         cor = jnp.sum(vals)
         #print('targets',targets)
