@@ -326,7 +326,7 @@ class TrainerModule:
             lambda g, n: (g + noise_std * n)/expected_bs,
             updates, noise)
         
-        print('after noise',noise,flush=True)
+        #print('after noise',noise,flush=True)
         
         return updates, new_key
         
@@ -693,7 +693,7 @@ class TrainerModule:
         eval_acc = jnp.mean(jnp.array(accs))
         eval_loss = jnp.mean(jnp.array(losses))
         
-        return test_loss,100.*correct_test/total_test,correct_test,total_test
+        return test_loss,correct_test/total_test,correct_test,total_test
     
     def print_param_shapes(self,params, prefix=''):
         for key, value in params.items():
