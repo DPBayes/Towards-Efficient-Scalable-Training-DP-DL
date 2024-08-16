@@ -252,7 +252,7 @@ class TrainerModule:
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':params},inputs,train=False)
+        logits = self.model.apply({'params':params},inputs)
         predicted_class = jnp.argmax(logits,axis=-1)
 
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
