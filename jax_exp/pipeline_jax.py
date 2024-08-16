@@ -459,6 +459,16 @@ class TrainerModule:
                         
                         total_batch = 0
                         correct_batch = 0
+                        
+                        eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+                        #eval_loss, eval_acc = self.eval_model(testloader)
+                        print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
+
+                        add_scalar_dict(self.logger,
+                                        'test_accuracy_dtrain',
+                                        {'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},
+                                        global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+
 
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
@@ -470,9 +480,9 @@ class TrainerModule:
                 print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
 
             epoch_time = time.time() - start_time_epoch
-
-            eval_loss, eval_acc = self.eval_model(testloader)
-            print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss,flush=True)
+            eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+            #eval_loss, eval_acc = self.eval_model(testloader)
+            print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
             add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss),'accuracy train':float(100.*correct/total),'loss train':float(train_loss)},global_step=epoch)
 
@@ -642,8 +652,8 @@ class TrainerModule:
 
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
 
-            eval_loss, eval_acc = self.eval_model(testloader)
-            print('Epoch',epoch,'eval acc',eval_acc,'eval loss',eval_loss)
+            eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+            print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
             add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss),'accuracy train':float(100.*correct/total),'loss train':float(train_loss)},global_step=epoch)
 
             throughput_t = (samples_used)/epoch_time
@@ -682,9 +692,8 @@ class TrainerModule:
             del batch
         eval_acc = jnp.mean(jnp.array(accs))
         eval_loss = jnp.mean(jnp.array(losses))
-
-        #return eval_loss,eval_acc
-        return test_loss,100.*correct_test/total_test
+        
+        return test_loss,100.*correct_test/total_test,correct_test,total_test
     
     def print_param_shapes(self,params, prefix=''):
         for key, value in params.items():
@@ -902,16 +911,17 @@ def main(args):
     print('data loaded',flush=True)
     #Create Trainer Module, that loads the model and train it
     trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode)
-    tloss,tacc = trainer.eval_model(testloader)
+    tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('Without trainig test loss',tloss)
-    print('Without training test accuracy',tacc)
+    print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
     if args.clipping_mode == 'non-private':
         throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch_2(trainloader,testloader)
     elif args.clipping_mode == 'mini':
         throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_2(trainloader,testloader)
-    tloss,tacc = trainer.eval_model(testloader)
+    tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
     print('compiling time',comp_time)
     print('test loss',tloss)
     print('test accuracy',tacc)
+    print('(',cor_eval,'/',tot_eval,')')
     return np.mean(throughputs),np.mean(throughputs_t),comp_time,tacc
