@@ -252,7 +252,6 @@ class TrainerModule:
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
-        print(len(inputs), len(targets))
         logits = self.model.apply({'params':params},inputs)
         print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
@@ -624,10 +623,10 @@ class TrainerModule:
                         correct += correct_batch
                         
                         print('(New)Accuracy values',100.*(correct/total))
-                        print('(New)Loss values',(train_loss/batch_idx+1))
+                        print('(New)Loss values',(train_loss/len(metrics['loss'])))
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {(train_loss/batch_idx+1)}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {(train_loss/len(metrics['loss']))}')
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
@@ -696,7 +695,8 @@ class TrainerModule:
         test_loss = 0
         total_test = 0
         correct_test = 0
-        for batch in data_loader:
+        batch_idx = 0
+        for batch_idx,batch in enumerate(data_loader):
             loss, acc,cor = self.eval_step_non(self.params,batch)
             test_loss += loss
             correct_test += cor
@@ -707,7 +707,7 @@ class TrainerModule:
         eval_acc = jnp.mean(jnp.array(accs))
         eval_loss = jnp.mean(jnp.array(losses))
         
-        return test_loss,correct_test/total_test,correct_test,total_test
+        return test_loss/(batch_idx+1),correct_test/total_test,correct_test,total_test
     
     def print_param_shapes(self,params, prefix=''):
         for key, value in params.items():
