@@ -177,7 +177,7 @@ class TrainerModule:
     
     def init_non_optimizer(self):
         self.optimizer = optax.adam(learning_rate=self.lr)
-        self.opt_state  = self.optimizer.init(self.params)
+        self.opt_state = self.optimizer.init(self.params)
 
     def init_with_chain(self,size,sample_rate):
         print('init optimizer, size ',size)
@@ -253,8 +253,8 @@ class TrainerModule:
     def loss_eval(self,params,batch):
         inputs,targets = batch
         logits = self.model.apply({'params':params},inputs)
+        print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
-        print('logits',logits.shape, flush=True)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
         #print('cross_losses:',cross_losses.shape)
         
@@ -623,10 +623,10 @@ class TrainerModule:
                         correct += correct_batch
                         
                         print('(New)Accuracy values',100.*(correct/total))
-                        print('(New)Loss values',train_loss)
+                        print('(New)Loss values',(train_loss/batch_idx+1))
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {(train_loss/batch_idx+1)}')
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
@@ -907,7 +907,7 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
         trainset, batch_size=w_batch, shuffle=True,collate_fn=numpy_collate, num_workers=num_workers,generator=generator,worker_init_fn=seed_worker)
 
     testloader = data.DataLoader(
-        testset, batch_size=100, shuffle=False,collate_fn=numpy_collate, num_workers=num_workers,generator=generator,worker_init_fn=seed_worker)
+        testset, batch_size=80, shuffle=False,collate_fn=numpy_collate, num_workers=num_workers,generator=generator,worker_init_fn=seed_worker)
 
     return trainloader,testloader
 
