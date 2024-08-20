@@ -254,9 +254,9 @@ class TrainerModule:
         inputs,targets = batch
         logits = self.model.apply({'params':params},inputs)
         predicted_class = jnp.argmax(logits,axis=-1)
-
+        print('logits',logits.shape, flush=True)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
-        #print('cross_losses:',cross_losses)
+        print('cross_losses:',cross_losses.shape)
         
 
         cross_loss = jnp.mean(cross_losses)
