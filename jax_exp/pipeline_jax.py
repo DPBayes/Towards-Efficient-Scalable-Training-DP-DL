@@ -626,7 +626,7 @@ class TrainerModule:
                         print('(New)Loss values',(train_loss/len(metrics['loss'])))
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {(train_loss/len(metrics['loss']))}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {train_loss/len(metrics['loss'])}')
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
@@ -920,8 +920,9 @@ def main(args):
     generator = set_seeds(args.seed)
     #Load data
     trainloader,testloader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,args.n_workers,generator)
-    if args.clipping_mode == 'mini':
-        trainloader = privatize_dataloader(trainloader)
+    #if args.clipping_mode == 'mini':
+    #    trainloader = privatize_dataloader(trainloader)
+    trainloader = privatize_dataloader(trainloader)
     print('data loaded',flush=True)
     #Create Trainer Module, that loads the model and train it
     trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode)

@@ -757,7 +757,6 @@ def main(local_rank,rank, world_size, args):
         print('Opacus model type',type(model))
         print('Opacus optimizer type',type(optimizer))
         print('Opacus loader type',type(train_loader))
-
     elif lib != 'non':
         train_loader = privatize_dataloader(train_loader) #The BatchMemoryManager of Opacus does this step. Since here we are implementing our own, we have to do this step explicitly before.
         sample_rate = 1 / len(train_loader)
@@ -765,6 +764,8 @@ def main(local_rank,rank, world_size, args):
         world_size = torch.distributed.get_world_size()
         expected_batch_size /= world_size
         privacy_engine = get_privacy_engine(model,train_loader,optimizer,lib,sample_rate,expected_batch_size,args)
+    elif lib == 'non':
+        train_loader = privatize_dataloader(train_loader) #In this case is only to be consistent with the sampling
     
     if args.torch2 == 'True':
         model = torch.compile(model)
