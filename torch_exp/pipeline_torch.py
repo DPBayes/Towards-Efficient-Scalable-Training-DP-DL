@@ -433,59 +433,56 @@ def train_non_private(device,model,loader,optimizer,criterion,epoch,physical_bat
     samples_used = 0
     optimizer.zero_grad()
     loss = None
-    with MyBatchMemoryManager(
-        data_loader=loader, 
-        max_physical_batch_size=physical_batch, 
-    ) as memory_safe_data_loader:
-        for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
-            starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
-            starter_t.record()
-            size_b = len(inputs)
-            #batch_sizes.append(size_b)
-            samples_used += size_b
-            inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
-            #with collector(tag='batch'):
-            
-            #Measure time, after loading data to the GPU
-            starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
-            starter.record()  # type: ignore
 
-            torch.set_grad_enabled(True)
+    for batch_idx, (inputs, targets) in enumerate(loader):
+        starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+        starter_t.record()
+        size_b = len(inputs)
+        #batch_sizes.append(size_b)
+        samples_used += size_b
+        inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
+        #with collector(tag='batch'):
+        
+        #Measure time, after loading data to the GPU
+        starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+        starter.record()  # type: ignore
 
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            loss.backward()
-            if ((batch_idx + 1) % n_acc_steps == 0) or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                print('take step batch idx: ',batch_idx+1,flush=True)
-                optimizer.step()
-                #train_loss += loss.item() * n_acc_steps * inputs.size(0)
-                optimizer.zero_grad()
-            _, predicted = outputs.max(1)
-            
-            
-            train_loss += loss.item() 
-            total_batch += targets.size(0)
-            correct_batch += predicted.eq(targets).sum().item()
-            del outputs,inputs
+        torch.set_grad_enabled(True)
 
-            ender.record() #type: ignore
-            torch.cuda.synchronize()
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        loss.backward()
+        if ((batch_idx + 1) % n_acc_steps == 0) or ((batch_idx + 1) == len(loader)):
+            print('take step batch idx: ',batch_idx+1,flush=True)
+            optimizer.step()
+            #train_loss += loss.item() * n_acc_steps * inputs.size(0)
+            optimizer.zero_grad()
+        _, predicted = outputs.max(1)
+        
+        
+        train_loss += loss.item() 
+        total_batch += targets.size(0)
+        correct_batch += predicted.eq(targets).sum().item()
+        del outputs,inputs
 
-            curr_time = starter.elapsed_time(ender)/1000
-            total_time_epoch += curr_time
+        ender.record() #type: ignore
+        torch.cuda.synchronize()
 
-            if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                            % (train_loss/len(memory_safe_data_loader.dataset), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
-                total += total_batch
-                correct += correct_batch
-                total_batch = 0
-                correct_batch = 0
-            
-            ender_t.record() #type: ignore
-            torch.cuda.synchronize()
-            curr_t = starter_t.elapsed_time(ender_t)/1000
-            total_time += curr_t  
+        curr_time = starter.elapsed_time(ender)/1000
+        total_time_epoch += curr_time
+
+        if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(loader)):
+            print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                        % (train_loss/len(loader.dataset), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
+            total += total_batch
+            correct += correct_batch
+            total_batch = 0
+            correct_batch = 0
+        
+        ender_t.record() #type: ignore
+        torch.cuda.synchronize()
+        curr_t = starter_t.elapsed_time(ender_t)/1000
+        total_time += curr_t  
     del loss
     print('Epoch: ', epoch, len(loader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
                             % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
@@ -702,8 +699,8 @@ def main(local_rank,rank, world_size, args):
             print('Privacy results after training {}'.format(privacy_results),flush=True)
         elif lib == 'non':
             train_loader.sampler.set_epoch(epoch)
-            th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
-            #th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            #th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
+            th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
         else:
             th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
             privacy_results = privacy_engine.get_privacy_spent() # type: ignore
