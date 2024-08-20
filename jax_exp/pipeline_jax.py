@@ -563,6 +563,8 @@ class TrainerModule:
             total_batch = 0
             correct_batch = 0
             batch_idx = 0
+            
+            times_up = 0
 
             print('steps',steps,flush=True)
             with MyBatchMemoryManager(
@@ -588,8 +590,9 @@ class TrainerModule:
                             print('flag queue',flag.skip_queue)
                             #print('here the step should be taken, the opt state:',self.opt_state.gradient_step,'count',gradient_step_ac)
                             print('batch_idx',batch_idx)
-                            self.print_param_change(old_params,self.params)
+                            #self.print_param_change(old_params,self.params)
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
+                            times_up += 1
                                                         
                         batch_time = time.time() - start_time
                         
@@ -651,7 +654,7 @@ class TrainerModule:
             
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
-            print('steps',steps,'gradient acc steps',gradient_step_ac,flush=True)
+            print('steps',steps,'gradient acc steps',gradient_step_ac,'times updated',times_up,flush=True)
             print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
                             % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
             

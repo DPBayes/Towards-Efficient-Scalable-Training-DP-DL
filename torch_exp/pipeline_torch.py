@@ -433,7 +433,8 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
     total_batch = 0
     samples_used = 0
     loss = None
-    print('Epoch',epoch,'physical batch size',physical_batch,flush=True)
+    times_up = 0
+    print('Epoch',epoch,'physical batch size',physical_batch,'batch size',len(loader.dataset),flush=True)
     with MyBatchMemoryManager(
         data_loader=loader, 
         max_physical_batch_size=physical_batch, 
@@ -446,38 +447,42 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
             #print('Batch size of ',size_b)
             samples_used += size_b
             inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
+            with torch.set_grad_enabled(True):
 
-            #Measure time, after loading data to the GPU
-            starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
-            starter.record()  # type: ignore
-            torch.set_grad_enabled(True)
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            loss.backward()
-            if not flag._check_skip_next_step():
-                print('take step batch idx: ',batch_idx+1,flush=True)
-                optimizer.step()
-                optimizer.zero_grad()
 
-            ender.record() #type: ignore
-            torch.cuda.synchronize()
+                #Measure time, after loading data to the GPU
+                starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+                starter.record()  # type: ignore
+                torch.set_grad_enabled(True)
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
 
-            curr_time = starter.elapsed_time(ender)/1000
-            total_time_epoch += curr_time
-            train_loss += loss.item()
-            _, predicted = outputs.max(1)
-            del outputs,inputs
-            total_batch += targets.size(0)
-            correct_batch += predicted.eq(targets).sum().item()
-            if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                print('samples_used',samples_used,'batch_idx',batch_idx,flush=True)
-                print('Epoch: ', epoch, 'Batch: ',batch_idx,'total_batch',total_batch,flush=True)
-                print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                            % (train_loss/(batch_idx+1), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
-                total += total_batch
-                correct += correct_batch
-                total_batch = 0
-                correct_batch = 0
+                loss.backward()
+                if not flag._check_skip_next_step():
+                    print('take step batch idx: ',batch_idx+1,flush=True)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    times_up += 1
+
+                ender.record() #type: ignore
+                torch.cuda.synchronize()
+
+                curr_time = starter.elapsed_time(ender)/1000
+                total_time_epoch += curr_time
+                train_loss += loss.item()
+                _, predicted = outputs.max(1)
+                del outputs,inputs
+                total_batch += targets.size(0)
+                correct_batch += predicted.eq(targets).sum().item()
+                if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(memory_safe_data_loader)):
+                    print('samples_used',samples_used,'batch_idx',batch_idx,flush=True)
+                    print('Epoch: ', epoch, 'Batch: ',batch_idx,'total_batch',total_batch,flush=True)
+                    print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                                % (train_loss/(batch_idx+1), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
+                    total += total_batch
+                    correct += correct_batch
+                    total_batch = 0
+                    correct_batch = 0
                 
         ender_t.record() #type: ignore
         torch.cuda.synchronize()
@@ -486,6 +491,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
     #del loss
     print('Epoch: ', epoch, len(loader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
                             % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
+    print('times updated',times_up,flush=True)
     print('batch_idx',batch_idx,'samples used',samples_used,'samples used / batch_idx',samples_used/batch_idx,'physical batch size',physical_batch,flush=True)
     throughput = (samples_used)/total_time_epoch
     throughput_complete = (samples_used)/total_time
