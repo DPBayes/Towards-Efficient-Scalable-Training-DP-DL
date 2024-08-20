@@ -209,7 +209,7 @@ def get_privacy_engine_opacus(model,loader,optimizer,g,args):
     'noise multiplier',optimizer.noise_multiplier,
     'max grad norm',optimizer.max_grad_norm,
     'loss reduction',optimizer.loss_reduction,
-    'expected batch size',optimizer.expected_batch_size)
+    'expected batch size',optimizer.expected_batch_size,flush=True)
     
 
         
@@ -702,7 +702,8 @@ def main(local_rank,rank, world_size, args):
             print('Privacy results after training {}'.format(privacy_results),flush=True)
         elif lib == 'non':
             train_loader.sampler.set_epoch(epoch)
-            th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
+            #th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
         else:
             th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
             privacy_results = privacy_engine.get_privacy_spent() # type: ignore
