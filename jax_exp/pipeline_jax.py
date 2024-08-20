@@ -252,6 +252,7 @@ class TrainerModule:
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
+        print(len(inputs), len(targets))
         logits = self.model.apply({'params':params},inputs)
         print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
