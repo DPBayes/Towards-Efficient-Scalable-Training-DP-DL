@@ -717,7 +717,9 @@ def main(local_rank,rank, world_size, args):
 
     train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu,world_size=world_size)
 
-    n_acc_steps = args.bs // args.phy_bs # gradient accumulation steps
+    expected_batch_size = int(len(train_loader.dataset) * sample_rate)
+
+    n_acc_steps = expected_batch_size // args.phy_bs # gradient accumulation steps
 
     print('For lib {} with train_loader dataset size {} and train loader size {}'.format(lib,len(train_loader.dataset),len(train_loader)))
 
@@ -774,7 +776,7 @@ def main(local_rank,rank, world_size, args):
             privacy_results = {'eps_rdp':privacy_results}
             print('Privacy results after training {}'.format(privacy_results),flush=True)
         elif lib == 'non':
-            train_loader.sampler.set_epoch(epoch)
+            #train_loader.sampler.set_epoch(epoch)
             #th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
             th,t_th = train_non_private_2(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
         else:
