@@ -417,6 +417,82 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
     print('Epoch {} Total time {} Throughput {}'.format(epoch,total_time,throughput_complete),flush=True)
     return throughput,throughput_complete
 
+
+def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
+
+    flag = EndingLogicalBatchSignal()
+    print('training {} model with load size {}'.format(lib,len(loader)))
+    model.train()
+    train_loss = 0
+    correct = 0
+    total = 0
+    batch_idx = 0
+    total_time_epoch = 0
+    total_time = 0
+    correct_batch = 0
+    total_batch = 0
+    samples_used = 0
+    loss = None
+    print('Epoch',epoch,'physical batch size',physical_batch,flush=True)
+    with MyBatchMemoryManager(
+        data_loader=loader, 
+        max_physical_batch_size=physical_batch, 
+        signaler=flag
+    ) as memory_safe_data_loader:
+        for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
+            starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+            starter_t.record()
+            size_b = len(inputs)
+            #print('Batch size of ',size_b)
+            samples_used += size_b
+            inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
+
+            #Measure time, after loading data to the GPU
+            starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+            starter.record()  # type: ignore
+            torch.set_grad_enabled(True)
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            if not flag._check_skip_next_step():
+                print('take step batch idx: ',batch_idx+1,flush=True)
+                optimizer.step()
+                optimizer.zero_grad()
+
+            ender.record() #type: ignore
+            torch.cuda.synchronize()
+
+            curr_time = starter.elapsed_time(ender)/1000
+            total_time_epoch += curr_time
+            train_loss += loss.item()
+            _, predicted = outputs.max(1)
+            del outputs,inputs
+            total_batch += targets.size(0)
+            correct_batch += predicted.eq(targets).sum().item()
+            if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(memory_safe_data_loader)):
+                print('samples_used',samples_used,'batch_idx',batch_idx,flush=True)
+                print('Epoch: ', epoch, 'Batch: ',batch_idx,'total_batch',total_batch,flush=True)
+                print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                            % (train_loss/(batch_idx+1), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
+                total += total_batch
+                correct += correct_batch
+                total_batch = 0
+                correct_batch = 0
+                
+        ender_t.record() #type: ignore
+        torch.cuda.synchronize()
+        curr_t = starter_t.elapsed_time(ender_t)/1000
+        total_time += curr_t  
+    #del loss
+    print('Epoch: ', epoch, len(loader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
+    print('batch_idx',batch_idx,'samples used',samples_used,'samples used / batch_idx',samples_used/batch_idx,'physical batch size',physical_batch,flush=True)
+    throughput = (samples_used)/total_time_epoch
+    throughput_complete = (samples_used)/total_time
+    print('Epoch {} Total time computing {} Throughput computing {}'.format(epoch,total_time_epoch,throughput),flush=True)
+    print('Epoch {} Total time {} Throughput {}'.format(epoch,total_time,throughput_complete),flush=True)
+    return throughput,throughput_complete
+
 #Method for Non private learning.
 #It still uses the gradient accumulation, just to compare it to the other methods.
 def train_non_private(device,model,loader,optimizer,criterion,epoch,physical_batch,n_acc_steps):
@@ -699,8 +775,8 @@ def main(local_rank,rank, world_size, args):
             print('Privacy results after training {}'.format(privacy_results),flush=True)
         elif lib == 'non':
             train_loader.sampler.set_epoch(epoch)
-            th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
-            #th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            #th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
+            th,t_th = train_non_private_2(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
         else:
             th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
             privacy_results = privacy_engine.get_privacy_spent() # type: ignore
