@@ -723,6 +723,8 @@ def main(local_rank,rank, world_size, args):
 
     train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu,world_size=world_size)
 
+    sample_rate = 1 / len(train_loader)
+
     expected_batch_size = int(len(train_loader.dataset) * sample_rate)
 
     n_acc_steps = expected_batch_size // args.phy_bs # gradient accumulation steps
