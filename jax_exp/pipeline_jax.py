@@ -530,7 +530,7 @@ class TrainerModule:
         #Training
         print('Non private learning')
         
-        _acc_update = lambda grad, acc : grad + acc
+        _acc_update = lambda grad, acc, acc_steps : grad + acc / acc_steps
 
         self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
@@ -581,7 +581,7 @@ class TrainerModule:
                         grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                         acc_grads = jax.tree_util.tree_map(
                             functools.partial(_acc_update),
-                            grads, acc_grads)
+                            grads, acc_grads,expected_acc_steps)
                         if not flag._check_skip_next_step():
                             print('about to update:')
                             old_params = self.params
@@ -596,7 +596,7 @@ class TrainerModule:
                                                         
                         batch_time = time.time() - start_time
                         
-                        train_loss += loss
+                        train_loss += loss / expected_acc_steps
                         total_batch += len(batch[1])
                         correct_batch += cor
                         
@@ -621,12 +621,12 @@ class TrainerModule:
                         avg_acc = float(jnp.mean(metrics['acc']))
                         total += total_batch
                         correct += correct_batch
-                        
+                        new_loss = train_loss/len(metrics['loss'])
                         print('(New)Accuracy values',100.*(correct/total))
-                        print('(New)Loss values',(train_loss/len(metrics['loss'])))
+                        print('(New)Loss values',(new_loss))
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {train_loss/len(metrics['loss'])}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {new_loss}')
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
                         print('Accuracy values',metrics['acc'])
                         print('Loss values',metrics['loss'])
@@ -656,7 +656,7 @@ class TrainerModule:
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
             print('steps',steps,'gradient acc steps',gradient_step_ac,'times updated',times_up,flush=True)
             print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
+                            % (train_loss/(len(trainloader)), 100.*correct/total, correct, total),flush=True)
             
             if epoch == 1:
                 print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])

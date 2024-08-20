@@ -418,12 +418,13 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
     return throughput,throughput_complete
 
 
-def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
+def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physical_batch,expected_acc_steps):
 
     flag = EndingLogicalBatchSignal()
     print('training {} model with load size {}'.format(lib,len(loader)))
     model.train()
     train_loss = 0
+    batch_loss = 0
     correct = 0
     total = 0
     batch_idx = 0
@@ -434,6 +435,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
     samples_used = 0
     loss = None
     times_up = 0
+    acc = 0 
     print('Epoch',epoch,'physical batch size',physical_batch,'batch size',len(loader.dataset),flush=True)
     with MyBatchMemoryManager(
         data_loader=loader, 
@@ -456,20 +458,22 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 torch.set_grad_enabled(True)
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
-
+                loss = loss / expected_acc_steps
                 loss.backward()
+                acc += 1
                 if not flag._check_skip_next_step():
                     print('take step batch idx: ',batch_idx+1,flush=True)
                     optimizer.step()
                     optimizer.zero_grad()
                     times_up += 1
-
+                
                 ender.record() #type: ignore
                 torch.cuda.synchronize()
 
                 curr_time = starter.elapsed_time(ender)/1000
                 total_time_epoch += curr_time
-                train_loss += loss.item()
+                batch_loss += loss.item()
+                train_loss += loss.item()*expected_acc_steps
                 _, predicted = outputs.max(1)
                 del outputs,inputs
                 total_batch += targets.size(0)
@@ -478,11 +482,13 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                     print('samples_used',samples_used,'batch_idx',batch_idx,flush=True)
                     print('Epoch: ', epoch, 'Batch: ',batch_idx,'total_batch',total_batch,flush=True)
                     print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                                % (train_loss/(batch_idx+1), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
+                                % (batch_loss/(acc), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
                     total += total_batch
                     correct += correct_batch
                     total_batch = 0
                     correct_batch = 0
+                    batch_loss = 0
+                    acc = 0
                 
         ender_t.record() #type: ignore
         torch.cuda.synchronize()
@@ -490,7 +496,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
         total_time += curr_t  
     #del loss
     print('Epoch: ', epoch, len(loader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
+                            % (train_loss/len(loader), 100.*correct/total, correct, total),flush=True)
     print('times updated',times_up,flush=True)
     print('batch_idx',batch_idx,'samples used',samples_used,'samples used / batch_idx',samples_used/batch_idx,'physical batch size',physical_batch,flush=True)
     throughput = (samples_used)/total_time_epoch
@@ -678,7 +684,7 @@ def test(device,model,lib,loader,criterion,epoch):
 
     acc = np.mean(accs)
 
-    dict_test = {'Test Loss':test_loss/(batch_idx+1),'Accuracy': acc}
+    dict_test = {'Test Loss':test_loss/len(loader),'Accuracy': acc}
     print('Epoch: ', epoch, len(loader), 'Test Loss: %.3f | Acc: %.3f%% '
                         % (dict_test['Test Loss'], dict_test['Accuracy']))
     
