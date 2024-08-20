@@ -151,6 +151,8 @@ def get_privacy_engine(model,loader,optimizer,lib,sample_rate,expected_batch_siz
             epochs = args.epochs,
             accountant = args.accountant
         )
+    
+    print('Noise multiplier', sigma,flush=True)
 
     if lib == 'fastDP':
         if 'BK' in args.clipping_mode:
@@ -202,6 +204,14 @@ def get_privacy_engine_opacus(model,loader,optimizer,g,args):
         max_grad_norm=args.grad_norm,
         noise_generator=g
     )
+    
+    print('optimizer params',
+    'noise multiplier',optimizer.noise_multiplier,
+    'max grad norm',optimizer.max_grad_norm,
+    'loss reduction',optimizer.loss_reduction,
+    'expected batch size',optimizer.expected_batch_size)
+    
+
         
     return model,optimizer,loader,privacy_engine
 

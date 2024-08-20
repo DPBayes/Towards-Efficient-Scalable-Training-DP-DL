@@ -570,7 +570,7 @@ class TrainerModule:
                 max_physical_batch_size=self.physical_bs, 
                 signaler=flag
                 ) as memory_safe_data_loader:
-                print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler))
+                print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler),flush=True)
                 for batch_idx, batch in enumerate(memory_safe_data_loader): 
                     with self.collector(tag='batch'):
                         samples_used += len(batch[0])
@@ -639,6 +639,15 @@ class TrainerModule:
                         metrics['loss'] = np.array([])
                         metrics['acc'] = np.array([])
                         add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+
+                        eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+                        #eval_loss, eval_acc = self.eval_model(testloader)
+                        print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
+
+                        add_scalar_dict(self.logger,
+                                        'test_accuracy_dtrain',
+                                        {'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},
+                                        global_step=len(memory_safe_data_loader)*epoch + batch_idx)
             
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
