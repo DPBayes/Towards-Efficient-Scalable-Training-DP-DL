@@ -793,7 +793,7 @@ def main(local_rank,rank, world_size, args):
         elif lib == 'non':
             #train_loader.sampler.set_epoch(epoch)
             #th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
-            th,t_th = train_non_private_2(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            th,t_th = train_non_private_2(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
         else:
             th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
             privacy_results = privacy_engine.get_privacy_spent() # type: ignore

@@ -530,8 +530,7 @@ class TrainerModule:
         #Training
         print('Non private learning')
         
-        _acc_update = lambda grad, acc, acc_steps : grad + acc / acc_steps
-
+        
         self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
         print('noise multiplier',self.noise_multiplier)
@@ -540,6 +539,8 @@ class TrainerModule:
         expected_bs = len(trainloader.dataset)/len(trainloader)
         expected_acc_steps = expected_bs // self.physical_bs
         print('expected accumulation steps',expected_acc_steps)
+        _acc_update = lambda grad, acc : grad + acc / expected_acc_steps
+
         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
         comp_time = 0
         gradient_step_ac = 0
