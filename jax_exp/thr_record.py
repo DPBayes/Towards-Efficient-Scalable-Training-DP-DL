@@ -43,7 +43,7 @@ if __name__ == '__main__':
         print(e)
         err = 'OOM'
 
-    row = [args.model,args.clipping_mode,args.epochs,args.phy_bs,err,thr,t_th,acc,comp_time]
+    row = [args.model,args.clipping_mode,args.epochs,args.phy_bs,err,thr,t_th,acc,comp_time,args.epsilon]
 
     exists = os.path.exists(path_log)
 
@@ -51,6 +51,6 @@ if __name__ == '__main__':
         writer = csv.writer(f, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
         if not exists:
-            writer.writerow(["model", "clipping_mode","epochs", "physical_batch", "fail",'throughput','total_throughput','acc_test','compilation_time'])
+            writer.writerow(["model", "clipping_mode","epochs", "physical_batch", "fail",'throughput','total_throughput','acc_test','compilation_time','epsilon'])
 
         writer.writerow(row)

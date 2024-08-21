@@ -300,7 +300,7 @@ class TrainerModule:
         params = optax.apply_updates(params,updates)
         return params,opt_state
     
-    #@partial(jit, static_argnums=0)
+    @partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
         (loss_val,(acc,cor)), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
         return grads,loss_val,acc,cor
@@ -312,23 +312,22 @@ class TrainerModule:
             else:
                 diff = jnp.abs(new_v - old_v).mean()
                 print(f"Param {old_k} mean absolute change: {diff}")
-                
+    
+    @partial(jit,static_argnums=0)
     def add_noise_fn(self,noise_std,expected_bs,rng_key,updates):
         
-        print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
+        jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
         num_vars = len(jax.tree_util.tree_leaves(updates))
         treedef = jax.tree_util.tree_structure(updates)
         new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-        print('num_vars',num_vars,flush=True)
+        #print('num_vars',num_vars,flush=True)
         noise = jax.tree_util.tree_map(
             lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
             updates, jax.tree_util.tree_unflatten(treedef, all_keys))
         updates = jax.tree_util.tree_map(
             lambda g, n: (g + noise_std * n)/expected_bs,
             updates, noise)
-        
-        #print('after noise',noise,flush=True)
-        
+
         return updates, new_key
         
     def private_training_mini_batch_2(self,trainloader,testloader):
@@ -437,14 +436,14 @@ class TrainerModule:
                         total += total_batch
                         correct += correct_batch
                         
-                        print('(New)Accuracy values',100.*(correct/total))
+                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
                         print('(New)Loss values',train_loss)
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
-                        print('Accuracy values',metrics['acc'])
-                        print('Loss values',metrics['loss'])
+                        #print('Accuracy values',metrics['acc'])
+                        #print('Loss values',metrics['loss'])
                         try:
                             add_scalar_dict(self.logger,
                                         f'train_batch_stats',
@@ -530,7 +529,7 @@ class TrainerModule:
         #Training
         print('Non private learning')
         
-        self.calculate_noise(len(trainloader))
+        #self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
         print('noise multiplier',self.noise_multiplier)
         throughputs = np.zeros(self.epochs)
