@@ -253,7 +253,7 @@ class TrainerModule:
     def loss_eval(self,params,batch):
         inputs,targets = batch
         logits = self.model.apply({'params':params},inputs)
-        print('logits shape',logits.shape)
+        #print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
         #print('cross_losses:',cross_losses.shape)
@@ -529,7 +529,6 @@ class TrainerModule:
 
         #Training
         print('Non private learning')
-        
         
         self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
