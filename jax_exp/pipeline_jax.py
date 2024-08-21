@@ -601,10 +601,10 @@ class TrainerModule:
                         correct_batch += cor
                         
 
-                        add_scalar_dict(self.logger, #type: ignore
-                                        'train_batch_memorystats',
-                                        torch.cuda.memory_stats(),
-                                        global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        #add_scalar_dict(self.logger, #type: ignore
+                        #                'train_batch_memorystats',
+                        #                torch.cuda.memory_stats(),
+                        #                global_step=len(memory_safe_data_loader)*epoch + batch_idx)
                         #add_scalar_dict(self.logger, 
                         #            'resources',      # tag='resources/train/batch/...'
                         #            self.collector.collect(),
@@ -628,8 +628,8 @@ class TrainerModule:
                         #avg_loss = train_loss/total
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {new_loss}')
                         print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
-                        print('Accuracy values',metrics['acc'])
-                        print('Loss values',metrics['loss'])
+                        #print('Accuracy values',metrics['acc'])
+                        #print('Loss values',metrics['loss'])
                         try:
                             add_scalar_dict(self.logger,
                                         f'train_batch_stats',
