@@ -531,7 +531,7 @@ class TrainerModule:
         
         #self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
-        print('noise multiplier',self.noise_multiplier)
+        #print('noise multiplier',self.noise_multiplier)
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
         expected_bs = len(trainloader.dataset)/len(trainloader)
