@@ -667,6 +667,8 @@ def test(device,model,lib,loader,criterion,epoch):
     model.eval()
     test_loss = 0
     batch_idx = 0
+    correct_test = 0
+    total_test = 0
     accs = []
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(loader):
@@ -678,6 +680,8 @@ def test(device,model,lib,loader,criterion,epoch):
             else:
                 test_loss += loss.item()
             _, preds = outputs.max(1)
+            correct_test += preds.eq(targets).sum().item()
+            total_test += targets.size(0)
             acc = preds.eq(targets).sum().item()/targets.size(0)
             accs.append(acc)
             del inputs,targets,outputs
@@ -685,8 +689,8 @@ def test(device,model,lib,loader,criterion,epoch):
     acc = np.mean(accs)
 
     dict_test = {'Test Loss':test_loss/len(loader),'Accuracy': acc}
-    print('Epoch: ', epoch, len(loader), 'Test Loss: %.3f | Acc: %.3f%% '
-                        % (dict_test['Test Loss'], dict_test['Accuracy']))
+    print('Epoch: ', epoch, len(loader), 'Test Loss: %.3f | Acc: %.3f '
+                        % (dict_test['Test Loss'], dict_test['Accuracy']),correct_test,'/',total_test)
     
     return acc
 
