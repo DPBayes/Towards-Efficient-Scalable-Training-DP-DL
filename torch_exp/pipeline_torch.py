@@ -436,7 +436,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
     loss = None
     times_up = 0
     acc = 0 
-    print('Epoch',epoch,'physical batch size',physical_batch,'batch size',len(loader.dataset),flush=True)
+    print('Epoch',epoch,'physical batch size',physical_batch,'expected_acc',expected_acc_steps,flush=True)
     with MyBatchMemoryManager(
         data_loader=loader, 
         max_physical_batch_size=physical_batch, 

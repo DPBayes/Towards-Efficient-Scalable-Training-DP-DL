@@ -294,7 +294,7 @@ class TrainerModule:
 
         return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
 
-    #@partial(jit, static_argnums=0)
+    @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
         updates,opt_state = self.optimizer.update(grads,opt_state,params)
         params = optax.apply_updates(params,updates)
@@ -622,7 +622,7 @@ class TrainerModule:
                         total += total_batch
                         correct += correct_batch
                         new_loss = train_loss/len(metrics['loss'])
-                        print('(New)Accuracy values',100.*(correct/total))
+                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
                         print('(New)Loss values',(new_loss))
                         #avg_acc = 100.*(correct/total)
                         #avg_loss = train_loss/total
@@ -651,6 +651,8 @@ class TrainerModule:
                                         'test_accuracy_dtrain',
                                         {'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},
                                         global_step=len(memory_safe_data_loader)*epoch + batch_idx)
+                        total_batch = 0
+                        correct_batch = 0
             
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
@@ -707,7 +709,7 @@ class TrainerModule:
         eval_acc = jnp.mean(jnp.array(accs))
         eval_loss = jnp.mean(jnp.array(losses))
         
-        return test_loss/(batch_idx+1),correct_test/total_test,correct_test,total_test
+        return test_loss/len(data_loader),eval_acc,correct_test,total_test
     
     def print_param_shapes(self,params, prefix=''):
         for key, value in params.items():
