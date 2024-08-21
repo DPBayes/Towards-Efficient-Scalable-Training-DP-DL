@@ -702,6 +702,15 @@ def ddp_setup(rank, world_size,port):
     init_process_group(backend="nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 
+def print_param_shapes(model, prefix=''):
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"{prefix}{name}: {param.shape}")
+    
+    for name, module in model.named_children():
+        print(f"{prefix}{name}:")
+        print_param_shapes(module, prefix + '  ')
+
 def main(local_rank,rank, world_size, args):
     
     print(args)
@@ -729,17 +738,10 @@ def main(local_rank,rank, world_size, args):
 
     train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu,world_size=world_size)
 
-    sample_rate = 1 / len(train_loader)
-
-    expected_batch_size = int(len(train_loader.dataset) * sample_rate)
-
-    n_acc_steps = expected_batch_size // args.phy_bs # gradient accumulation steps
-
     print('For lib {} with train_loader dataset size {} and train loader size {}'.format(lib,len(train_loader.dataset),len(train_loader)))
 
-    print('Gradient Accumulation Steps',n_acc_steps)
-
     model_s = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
+
     if lib == 'non':
         model = DDP(model_s,device_ids=[device])
     else:
@@ -752,6 +754,7 @@ def main(local_rank,rank, world_size, args):
     total_params,trainable_params = count_params(model)
 
     print("The model has in total {} params, and {} are trainable".format(total_params,trainable_params),flush=True)
+    print_param_shapes(model)
 
     criterion = get_loss_function(lib)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -772,6 +775,13 @@ def main(local_rank,rank, world_size, args):
         privacy_engine = get_privacy_engine(model,train_loader,optimizer,lib,sample_rate,expected_batch_size,args)
     elif lib == 'non':
         train_loader = privatize_dataloader(train_loader) #In this case is only to be consistent with the sampling
+        sample_rate = 1 / len(train_loader)
+
+        expected_batch_size = int(len(train_loader.dataset) * sample_rate)
+
+        n_acc_steps = expected_batch_size // args.phy_bs # gradient accumulation steps
+
+        print('Gradient Accumulation Steps',n_acc_steps)
     
     if args.torch2 == 'True':
         model = torch.compile(model)

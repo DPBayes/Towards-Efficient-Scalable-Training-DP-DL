@@ -582,7 +582,7 @@ class TrainerModule:
                         grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                         acc_grads = jax.tree_util.tree_map(
                             functools.partial(_acc_update),
-                            grads, acc_grads,expected_acc_steps)
+                            grads, acc_grads)
                         if not flag._check_skip_next_step():
                             print('about to update:')
                             old_params = self.params
