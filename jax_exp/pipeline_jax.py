@@ -316,7 +316,7 @@ class TrainerModule:
     @partial(jit,static_argnums=0)
     def add_noise_fn(self,noise_std,expected_bs,rng_key,updates):
         
-        jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
+        #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
         num_vars = len(jax.tree_util.tree_leaves(updates))
         treedef = jax.tree_util.tree_structure(updates)
         new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
