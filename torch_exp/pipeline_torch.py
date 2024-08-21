@@ -108,7 +108,7 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
         trainset = datasets.CIFAR100(root='../data_cifar100/', train=True, download=True, transform=transformation)
         testset = datasets.CIFAR100(root='../data_cifar100/', train=False, download=True, transform=transformation)
 
-    if lib == 'non':
+    if lib == 'non' and world_size>1:
         trainloader = torch.utils.data.DataLoader(
             trainset, 
             #batch_size=batch_size_train if lib == 'opacus' else physical_batch_size,  #If it is opacus, it uses the normal batch size, because is the BatchMemoryManager the one that handles the phy and bs sizes
@@ -130,7 +130,7 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
     
     testloader = torch.utils.data.DataLoader(
         testset,
-        batch_size=100, 
+        batch_size=80, 
         shuffle=False, 
         num_workers=num_workers,
         generator=generator,
@@ -473,7 +473,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 curr_time = starter.elapsed_time(ender)/1000
                 total_time_epoch += curr_time
                 batch_loss += loss.item()
-                train_loss += loss.item()*expected_acc_steps
+                train_loss += loss.item()
                 _, predicted = outputs.max(1)
                 del outputs,inputs
                 total_batch += targets.size(0)
@@ -738,7 +738,7 @@ def main(local_rank,rank, world_size, args):
 
     train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu,world_size=world_size)
 
-    print('For lib {} with train_loader dataset size {} and train loader size {}'.format(lib,len(train_loader.dataset),len(train_loader)))
+    print('For lib {} with train_loader dataset size {} and train loader size {} and world size {}'.format(lib,len(train_loader.dataset),len(train_loader),world_size))
 
     model_s = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
 

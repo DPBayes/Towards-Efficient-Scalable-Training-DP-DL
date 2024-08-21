@@ -537,7 +537,7 @@ class TrainerModule:
         throughputs_t = np.zeros(self.epochs)
         expected_bs = len(trainloader.dataset)/len(trainloader)
         expected_acc_steps = expected_bs // self.physical_bs
-        print('expected accumulation steps',expected_acc_steps)
+        print('expected accumulation steps',expected_acc_steps,'len dataloader',len(trainloader),'expected_bs',expected_bs)
         _acc_update = lambda grad, acc : grad + acc / expected_acc_steps
 
         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
