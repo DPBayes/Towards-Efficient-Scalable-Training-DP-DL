@@ -279,7 +279,7 @@ class TrainerModule:
         #loss, acc= self.loss_2(self.params, batch)
         return loss, acc,cor
     
-    #@partial(jit, static_argnums=0)
+    @partial(jit, static_argnums=0)
     def mini_batch_dif_clip2(self,batch,params,l2_norm_clip):
         
         batch = jax.tree_map(lambda x: x[:, None], batch)
@@ -402,7 +402,7 @@ class TrainerModule:
                             print('batch_idx',batch_idx)
                             print('flag queue',flag.skip_queue)
                             print('count',gradient_step_ac)
-                            self.print_param_change(old_params,self.params)
+                            #self.print_param_change(old_params,self.params)
                             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                             
                             
