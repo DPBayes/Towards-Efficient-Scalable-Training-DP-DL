@@ -819,9 +819,9 @@ def main(local_rank,rank, world_size, args):
         torch.cuda.empty_cache()
 
     print('--- Finished training ---',flush=True)
-    
+    acc = test(device,model,lib,test_loader,criterion,epoch)
     thr = np.mean(throughs)
-    acc = test_accs[-1]
+    #acc = test_accs[-1]
     t_th = np.mean(total_thr)
 
     err = None
