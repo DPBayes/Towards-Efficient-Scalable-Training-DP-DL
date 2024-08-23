@@ -494,7 +494,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
         torch.cuda.synchronize()
         curr_t = starter_t.elapsed_time(ender_t)/1000
         total_time += curr_t  
-    #del loss
+    del loss
     print('Epoch: ', epoch, len(loader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
                             % (train_loss/len(loader), 100.*correct/total, correct, total),flush=True)
     print('times updated',times_up,flush=True)
@@ -690,9 +690,9 @@ def test(device,model,lib,loader,criterion,epoch):
 
     dict_test = {'Test Loss':test_loss/len(loader),'Accuracy': acc}
     print('Epoch: ', epoch, len(loader), 'Test Loss: %.3f | Acc: %.3f '
-                        % (dict_test['Test Loss'], dict_test['Accuracy']))
+                        % (dict_test['Test Loss'], dict_test['Accuracy']),flush=True)
     
-    print(correct_test,'/',total_test,flush=True)
+    print('correctly classified',correct_test,'/',total_test,100.*correct_test/total_test,flush=True)
     
     return acc
 
