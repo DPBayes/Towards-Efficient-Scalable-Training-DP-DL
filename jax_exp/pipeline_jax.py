@@ -840,6 +840,12 @@ def image_to_numpy(img):
 
 def image_to_numpy_wo_t(img):
     img = np.array(img, dtype=np.float32)
+    img = ((img / 255.) - DATA_MEANS) / DATA_STD
+    img = np.transpose(img,[2,0,1])
+    return img
+
+def image_to_numpy_wo_t2(img):
+    img = np.array(img, dtype=np.float32)
     img = ((img / 255.) - DATA_MEANS2) / DATA_STD2
     img = np.transpose(img,[2,0,1])
     return img
@@ -885,15 +891,21 @@ def set_seeds(seed):
 
 
 #Load CIFAR data
-def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_workers,generator):
+def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_workers,generator,norm):
 
     print('load_data_cifar',batch_size_train,physical_batch_size,num_workers)
 
     w_batch = batch_size_train
 
+    if norm:
+        fn = image_to_numpy_wo_t
+    else:
+        fn = image_to_numpy_wo_t2
+
+
     transformation = torchvision.transforms.Compose([
         torchvision.transforms.Resize(dimension),
-        image_to_numpy_wo_t,
+        fn,
         #torchvision.transforms.ToTensor(),
         #torchvision.transforms.Normalize(DATA_MEANS,DATA_STD),
     ])
@@ -920,7 +932,7 @@ def main(args):
     print(args,flush=True)
     generator = set_seeds(args.seed)
     #Load data
-    trainloader,testloader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,args.n_workers,generator)
+    trainloader,testloader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,args.n_workers,generator,args.normalization)
     #if args.clipping_mode == 'mini':
     #    trainloader = privatize_dataloader(trainloader)
     trainloader = privatize_dataloader(trainloader)

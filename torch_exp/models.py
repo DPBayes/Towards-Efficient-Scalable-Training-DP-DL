@@ -285,16 +285,16 @@ class DpFslLinear(nn.Module):
     self.feature_extractor = feature_extractor
 
     num_features = self.feature_extractor.head.in_features
-    self.feature_extractor.head = nn.Identity()
+    #self.feature_extractor.head = nn.Identity()
     # send a test signal through the feature extractor to get its feature dimension
     #feature_extractor_dim = self.feature_extractor(torch.Tensor(1, 3, 224, 224)).size(1)
 
-    self.head = nn.Linear(num_features, num_classes)
-    #self.head.weight.data.fill_(0.0)
-    #self.head.bias.data.fill_(0.0)
+    self.feature_extractor.head = nn.Linear(num_features, num_classes)
+    self.feature_extractor.head.weight.data.fill_(0.0)
+    self.feature_extractor.head.bias.data.fill_(0.0)
 
   def forward(self, x):
-    return self.head(self.feature_extractor(x))
+    return self.feature_extractor(x)
 
 
 KNOWN_MODELS = OrderedDict([
