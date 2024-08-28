@@ -379,7 +379,7 @@ class TrainerModule:
                                     grads, acc_grad)
 
             accumulated_gradients = fori_loop(0, k, foo, acc_grads)
-            print('update?',accumulated_gradients)
+            #print('update?',accumulated_gradients)
             params,opt_state = self.grad_acc_update(accumulated_gradients,opt_state,params)
         
         return params,opt_state
