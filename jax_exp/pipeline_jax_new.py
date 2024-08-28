@@ -289,20 +289,20 @@ class TrainerModule:
         #loss, acc= self.loss_2(self.params, batch)
         return loss, acc,cor
     
-    # @partial(jit, static_argnums=0)
-    # def mini_batch_dif_clip2(self,batch,params,l2_norm_clip):
+    @partial(jit, static_argnums=0)
+    def mini_batch_dif_clip2(self,batch,params,l2_norm_clip):
         
-    #     batch = jax.tree_map(lambda x: x[:, None], batch)
+        batch = jax.tree_map(lambda x: x[:, None], batch)
         
-    #     (loss_val,(acc,cor)), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
+        (loss_val,(acc,cor)), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
         
-    #     grads_flat, grads_treedef = jax.tree_util.tree_flatten(per_example_grads)
+        grads_flat, grads_treedef = jax.tree_util.tree_flatten(per_example_grads)
 
-    #     clipped, num_clipped = clipping.per_example_global_norm_clip(grads_flat, l2_norm_clip)
+        clipped, num_clipped = clipping.per_example_global_norm_clip(grads_flat, l2_norm_clip)
 
-    #     grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
+        grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
 
-    #     return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
+        return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
 
     @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
@@ -323,22 +323,22 @@ class TrainerModule:
                 diff = jnp.abs(new_v - old_v).mean()
                 print(f"Param {old_k} mean absolute change: {diff}")
     
-    # @partial(jit,static_argnums=0)
-    # def add_noise_fn(self,noise_std,expected_bs,rng_key,updates):
+    @partial(jit,static_argnums=0)
+    def add_noise_fn(self,noise_std,expected_bs,rng_key,updates):
         
-    #     #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
-    #     num_vars = len(jax.tree_util.tree_leaves(updates))
-    #     treedef = jax.tree_util.tree_structure(updates)
-    #     new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-    #     #print('num_vars',num_vars,flush=True)
-    #     noise = jax.tree_util.tree_map(
-    #         lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
-    #         updates, jax.tree_util.tree_unflatten(treedef, all_keys))
-    #     updates = jax.tree_util.tree_map(
-    #         lambda g, n: (g + noise_std * n)/expected_bs,
-    #         updates, noise)
+        #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
+        num_vars = len(jax.tree_util.tree_leaves(updates))
+        treedef = jax.tree_util.tree_structure(updates)
+        new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
+        #print('num_vars',num_vars,flush=True)
+        noise = jax.tree_util.tree_map(
+            lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+            updates, jax.tree_util.tree_unflatten(treedef, all_keys))
+        updates = jax.tree_util.tree_map(
+            lambda g, n: (g + noise_std * n)/expected_bs,
+            updates, noise)
 
-    #     return updates, new_key
+        return updates, new_key
 
     def iter_loop(self,train_loader,acc_function,params,opt_state,k,q,n):
         #_acc_update = lambda grad, acc : grad + acc
@@ -385,11 +385,73 @@ class TrainerModule:
         
         return params,opt_state
     
-    def train_epochs(self,trainloader,testloader):
+    def iter_loop_private(self,train_loader,acc_function,params,opt_state,k,q,n,expected_bs):
+        #_acc_update = lambda grad, acc : grad + acc
+        for batch_idx,(x,y) in enumerate(train_loader): #logical
 
+            print(batch_idx)
+            #print(type(x),x[0].shape)
+            x  = jnp.array(x)
+            y = jnp.array(y)
+            print(type(x),len(x),x.shape)
+            print(type(y),len(y),y.shape)
+
+            diff = len(y) % k
+
+            if diff > 0:
+
+                x = jnp.pad(x, ((0, k - diff), (0, 0), (0, 0), (0, 0)), mode='constant')
+                y = jnp.pad(y, ((0, k - diff)), mode='constant')
+                print('new shape',x.shape,y.shape)
+            
+            batch_size = len(x)
+
+            choice_rng, binom_rng = jax.random.split(jax.random.PRNGKey(batch_idx), 2)
+
+            physical_batches = jnp.array(jnp.split(x, k))
+            physical_labels = jnp.array(jnp.split(y,k))
+            actual_logical_bs = jax.random.bernoulli(binom_rng, q, shape=(n,)).sum()
+            masks = jnp.array(jnp.split((jnp.arange(batch_size) < actual_logical_bs), k))
+            acc_grads = jax.tree_util.tree_map(jnp.zeros_like,params)
+            def foo(t, args):
+                acc_grad = args
+                mask = masks[t]
+                data_x = (physical_batches[t] * mask)
+                data_y = (physical_labels[t] * mask)
+
+                grads,loss,acc,cor,num_clipped = self.mini_batch_dif_clip2((data_x,data_y),params,self.max_grad_norm)
+                #grads,loss,acc,cor = self.non_private_update(params,(data_x,data_y))
+                return jax.tree_util.tree_map(
+                                    functools.partial(acc_function),
+                                    grads, acc_grad)
+
+            accumulated_gradients = fori_loop(0, k, foo, acc_grads)
+            updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,expected_bs,self.rng,accumulated_gradients)
+            #print('update?',accumulated_gradients)
+            print('batch_idx',batch_idx,'update step')
+            params,opt_state = self.grad_acc_update(updates,opt_state,params)
+        
+        return params,opt_state
+    
+    def train_epochs_dp(self,trainloader,testloader):
+        expected_bs = len(trainloader.dataset)/len(trainloader)
         _acc_update = lambda grad, acc : grad + acc
         for i in range(self.epochs):
+            print('epoch',i)
+            self.params,self.opt_state = self.iter_loop_private(trainloader,_acc_update,self.params,self.opt_state,self.k,self.q,self.dataset_size,expected_bs)
+            _,acc,_,_ = self.eval_model(testloader)
+            print('end epoch',i,'acc',acc)
+        return self.eval_model(testloader)
+
+
+    def train_epochs(self,trainloader,testloader):
+        
+        _acc_update = lambda grad, acc : grad + acc
+        for i in range(self.epochs):
+            print('epoch',i)
             self.params,self.opt_state = self.iter_loop(trainloader,_acc_update,self.params,self.opt_state,self.k,self.q,self.dataset_size)
+            _,acc,_,_ = self.eval_model(testloader)
+            print('end epoch',i,'acc',acc)
         return self.eval_model(testloader)
 
     def eval_model(self, data_loader):
@@ -600,7 +662,7 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
 
     w_batch = batch_size_train
 
-    if norm:
+    if norm == 'True':
         fn = image_to_numpy_wo_t
     else:
         fn = image_to_numpy_wo_t2
