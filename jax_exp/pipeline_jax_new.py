@@ -20,6 +20,8 @@ import functools
 import re
 import numpy as np
 
+import math
+
 
 from scipy.stats import binom
 
@@ -115,7 +117,7 @@ def transform_params(params, params_tf, num_classes):
 class TrainerModule:
 
     def __init__(self,model_name,lr=0.0005,epochs = 20,seed=1234,max_grad = 0.1,accountant_method='rdp',
-                 batch_size=20,physical_bs = 10,target_epsilon=2,target_delta=1e-5,num_classes = 10,test='train',dimension=224,clipping_mode='private',dataset_size = 50000,k = 100) -> None:
+                 batch_size=20,physical_bs = 10,target_epsilon=2,target_delta=1e-5,num_classes = 10,test='train',dimension=224,clipping_mode='private',dataset_size = 50000,k = 100,q=1/2) -> None:
         self.lr = lr
         self.seed = seed
         self.epochs = epochs
@@ -143,6 +145,7 @@ class TrainerModule:
         #self.create_functions()
 
         self.k = k
+        self.q = q
         self.state = None
         self.load_model()
         print(self.model_name,self.num_classes,self.target_epsilon,'acc steps',self.acc_steps)
@@ -385,7 +388,7 @@ class TrainerModule:
 
         _acc_update = lambda grad, acc : grad + acc
         for i in range(self.epochs):
-            self.params,self.opt_state = self.iter_loop(trainloader,_acc_update,self.params,self.opt_state,self.k,1/2,self.dataset_size)
+            self.params,self.opt_state = self.iter_loop(trainloader,_acc_update,self.params,self.opt_state,self.k,self.q,self.dataset_size)
         return self.eval_model(testloader)
 
     def eval_model(self, data_loader):
@@ -650,7 +653,9 @@ def main(args):
     print(args,flush=True)
     generator = set_seeds(args.seed)
 
-    k,mlbs = calculate_sampling(50000,args.phy_bs,1/2)
+    q = 1/math.ceil(50000/args.bs)
+
+    k,mlbs = calculate_sampling(50000,args.phy_bs,q)
 
     #Load data
     trainloader,testloader = load_data_cifar(args.ten,args.dimension,mlbs,args.phy_bs,args.n_workers,generator,args.normalization)
@@ -659,7 +664,7 @@ def main(args):
     #trainloader = privatize_dataloader(trainloader)
     print('data loaded',len(trainloader),flush=True)
     #Create Trainer Module, that loads the model and train it
-    trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode,k=k)
+    trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode,k=k,q=q)
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
