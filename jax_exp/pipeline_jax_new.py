@@ -732,7 +732,11 @@ def main(args):
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
     trainer.init_non_optimizer()
-    vals = trainer.train_epochs(trainloader,testloader)
+
+    if args.clipping_mode == 'non-private':
+        vals = trainer.train_epochs(trainloader,testloader)
+    else:
+        vals = trainer.train_epochs_dp(trainloader,testloader)
 
     print(vals)
 
