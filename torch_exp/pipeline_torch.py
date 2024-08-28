@@ -88,7 +88,7 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
 
     print('load_data_cifar',lib,batch_size_train,physical_batch_size,num_workers)
 
-    if normalization:
+    if normalization == 'True':
         means = (0.5,0.5,0.5)
         stds = (0.5,0.5,0.5)
     else:

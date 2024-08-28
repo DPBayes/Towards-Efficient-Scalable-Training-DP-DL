@@ -25,7 +25,7 @@ if __name__ == '__main__':
                         type=float, help='max grad norm')
     parser.add_argument('--target_delta',default=1e-5,type=float,help='target delta')
     parser.add_argument('--seed',default=1234,type=int)
-    parser.add_argument('--normalization',default=True,type=bool)
+    parser.add_argument('--normalization',default='True',type=str)
     parser.add_argument('--test',type=str,default='train')
     parser.add_argument('--file',type=str,default='thr_record.csv')
 

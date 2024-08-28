@@ -897,7 +897,7 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
 
     w_batch = batch_size_train
 
-    if norm:
+    if norm == 'True':
         fn = image_to_numpy_wo_t
     else:
         fn = image_to_numpy_wo_t2
