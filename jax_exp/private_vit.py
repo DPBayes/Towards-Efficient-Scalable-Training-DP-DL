@@ -6,7 +6,7 @@ from transformers import FlaxViTModel
 class ViTModelHead(nn.Module):
     #config: FlaxViTModel.config_class #ViT configuration. Architecture
     num_classes: int #Num classes, or output neurons
-    vit: nn.Module
+    #vit: nn.Module
     pretrained_model: FlaxViTModel
 
     @nn.compact
