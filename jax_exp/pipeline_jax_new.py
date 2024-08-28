@@ -380,6 +380,7 @@ class TrainerModule:
 
             accumulated_gradients = fori_loop(0, k, foo, acc_grads)
             #print('update?',accumulated_gradients)
+            print('batch_idx',batch_idx,'update step')
             params,opt_state = self.grad_acc_update(accumulated_gradients,opt_state,params)
         
         return params,opt_state
@@ -672,6 +673,8 @@ def main(args):
     vals = trainer.train_epochs(trainloader,testloader)
 
     print(vals)
+
+    return 0,0,0,vals[1]
 
     # if args.clipping_mode == 'non-private':
     #     throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch_2(trainloader,testloader)
