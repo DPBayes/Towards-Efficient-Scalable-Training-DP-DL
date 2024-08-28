@@ -663,7 +663,7 @@ def main(args):
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
-
+    trainer.init_non_optimizer()
     vals = trainer.train_epochs(trainloader,testloader)
 
     print(vals)
