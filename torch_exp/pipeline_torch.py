@@ -828,7 +828,7 @@ def main(local_rank,rank, world_size, args):
 
     err = None
 
-    row = [args.model,args.clipping_mode,args.epochs,args.phy_bs,err,thr,t_th,acc,args.epsilon]
+    row = [args.model,args.clipping_mode,args.normalization,args.epochs,args.phy_bs,err,thr,t_th,acc,args.epsilon]
 
     path_log = args.file+str(int(rank))+ ".csv"
 
@@ -838,7 +838,7 @@ def main(local_rank,rank, world_size, args):
         writer = csv.writer(f, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
         if not exists:
-            writer.writerow(["model", "clipping_mode","epochs", "physical_batch", "fail",'throughput','total_throughput','acc_test',"epsilon"])
+            writer.writerow(["model", "clipping_mode","normalization","epochs", "physical_batch", "fail",'throughput','total_throughput','acc_test',"epsilon"])
 
         writer.writerow(row)
 
