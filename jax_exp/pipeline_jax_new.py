@@ -719,7 +719,7 @@ def main(args):
     q = 1/math.ceil(50000/args.bs)
 
     k,mlbs = calculate_sampling(50000,args.phy_bs,q)
-
+    print('k:',k,'mlbs:',mlbs)
     #Load data
     trainloader,testloader = load_data_cifar(args.ten,args.dimension,mlbs,args.phy_bs,args.n_workers,generator,args.normalization)
     #if args.clipping_mode == 'mini':
