@@ -610,29 +610,29 @@ class TrainerModule:
                     batch_times.append(batch_time)
                     total_time_epoch += batch_time
 
-                if batch_idx % 100 == 99 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                    
-                    avg_loss = float(jnp.mean(metrics['loss']))
-                    avg_acc = float(jnp.mean(metrics['acc']))
-                    total += total_batch
-                    correct += correct_batch
-                    
-                    print('(New)Accuracy values',100.*(correct_batch/total_batch))
-                    print('(New)Loss values',train_loss)
-                    #avg_acc = 100.*(correct/total)
-                    #avg_loss = train_loss/total
-                    print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
-                    print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
+                    if batch_idx % 100 == 99 or ((batch_idx + 1) == len(memory_safe_data_loader)):
+                        
+                        avg_loss = float(jnp.mean(metrics['loss']))
+                        avg_acc = float(jnp.mean(metrics['acc']))
+                        total += total_batch
+                        correct += correct_batch
+                        
+                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
+                        print('(New)Loss values',train_loss)
+                        #avg_acc = 100.*(correct/total)
+                        #avg_loss = train_loss/total
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
 
-                    metrics['loss'] = np.array([])
-                    metrics['acc'] = np.array([])
-                    
-                    total_batch = 0
-                    correct_batch = 0
-                    
-                    eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                    #eval_loss, eval_acc = self.eval_model(testloader)
-                    print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
+                        metrics['loss'] = np.array([])
+                        metrics['acc'] = np.array([])
+                        
+                        total_batch = 0
+                        correct_batch = 0
+                        
+                        eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+                        #eval_loss, eval_acc = self.eval_model(testloader)
+                        print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
@@ -929,27 +929,27 @@ class TrainerModule:
                     batch_times.append(batch_time)
                     total_time_epoch += batch_time
 
-                if batch_idx % 100 == 99 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                    
-                    avg_loss = float(jnp.mean(metrics['loss']))
-                    avg_acc = float(jnp.mean(metrics['acc']))
-                    total += total_batch
-                    correct += correct_batch
-                    new_loss = train_loss/len(metrics['loss'])
-                    print('(New)Accuracy values',100.*(correct_batch/total_batch))
-                    print('(New)Loss values',(new_loss))
-                    print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {new_loss}')
-                    print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
-                    print('Update metrics')
-                    metrics['loss'] = np.array([])
-                    metrics['acc'] = np.array([])
-                    
-                    eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                    #eval_loss, eval_acc = self.eval_model(testloader)
-                    print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
+                    if batch_idx % 100 == 99 or ((batch_idx + 1) == len(memory_safe_data_loader)):
+                        
+                        avg_loss = float(jnp.mean(metrics['loss']))
+                        avg_acc = float(jnp.mean(metrics['acc']))
+                        total += total_batch
+                        correct += correct_batch
+                        new_loss = train_loss/len(metrics['loss'])
+                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
+                        print('(New)Loss values',(new_loss))
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {new_loss}')
+                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
+                        print('Update metrics')
+                        metrics['loss'] = np.array([])
+                        metrics['acc'] = np.array([])
+                        
+                        eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+                        #eval_loss, eval_acc = self.eval_model(testloader)
+                        print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
-                    total_batch = 0
-                    correct_batch = 0
+                        total_batch = 0
+                        correct_batch = 0
         
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
