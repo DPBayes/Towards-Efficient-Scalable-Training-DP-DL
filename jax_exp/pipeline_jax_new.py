@@ -382,7 +382,7 @@ class TrainerModule:
             #print('update?',accumulated_gradients)
             print('batch_idx',batch_idx,'update step')
             params,opt_state = self.grad_acc_update(accumulated_gradients,opt_state,params)
-        
+            del x,y,physical_batches,physical_labels
         return params,opt_state
     
     def iter_loop_private(self,train_loader,acc_function,params,opt_state,k,q,n,expected_bs):
@@ -430,7 +430,7 @@ class TrainerModule:
             #print('update?',accumulated_gradients)
             print('batch_idx',batch_idx,'update step')
             params,opt_state = self.grad_acc_update(updates,opt_state,params)
-        
+            del x,y,physical_batches,physical_labels
         return params,opt_state
     
     def train_epochs_dp(self,trainloader,testloader):
