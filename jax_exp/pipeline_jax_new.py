@@ -446,8 +446,10 @@ class TrainerModule:
 
 
     def train_epochs(self,trainloader,testloader):
+        expected_bs = len(trainloader.dataset)/len(trainloader)
+        expected_acc_steps = expected_bs // self.physical_bs
         
-        _acc_update = lambda grad, acc : grad + acc
+        _acc_update = lambda grad, acc : grad + acc / expected_acc_steps
         for i in range(self.epochs):
             print('epoch',i)
             self.params,self.opt_state = self.iter_loop(trainloader,_acc_update,self.params,self.opt_state,self.k,self.q,self.dataset_size)
