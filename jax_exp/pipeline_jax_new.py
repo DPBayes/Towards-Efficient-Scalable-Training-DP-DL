@@ -344,12 +344,12 @@ class TrainerModule:
         #_acc_update = lambda grad, acc : grad + acc
         for batch_idx,(x,y) in enumerate(train_loader): #logical
 
-            print(batch_idx)
+            print('batch idx',batch_idx)
             #print(type(x),x[0].shape)
             x  = jnp.array(x)
             y = jnp.array(y)
-            print(type(x),len(x),x.shape)
-            print(type(y),len(y),y.shape)
+            #print(type(x),len(x),x.shape)
+            #print(type(y),len(y),y.shape)
 
             diff = len(y) % k
 
@@ -389,12 +389,12 @@ class TrainerModule:
         #_acc_update = lambda grad, acc : grad + acc
         for batch_idx,(x,y) in enumerate(train_loader): #logical
 
-            print(batch_idx)
+            print('batch idx',batch_idx)
             #print(type(x),x[0].shape)
             x  = jnp.array(x)
             y = jnp.array(y)
-            print(type(x),len(x),x.shape)
-            print(type(y),len(y),y.shape)
+            #print(type(x),len(x),x.shape)
+            #print(type(y),len(y),y.shape)
 
             diff = len(y) % k
 
