@@ -435,6 +435,7 @@ class TrainerModule:
     
     def train_epochs_dp(self,trainloader,testloader):
         expected_bs = len(trainloader.dataset)/len(trainloader)
+        self.calculate_noise(len(trainloader))
         _acc_update = lambda grad, acc : grad + acc
         for i in range(self.epochs):
             print('epoch',i)
@@ -719,7 +720,7 @@ def main(args):
     q = 1/math.ceil(50000/args.bs)
 
     k,mlbs = calculate_sampling(50000,args.phy_bs,q)
-    print('k:',k,'mlbs:',mlbs)
+    print('k:',k,'mlbs:',mlbs,'sample rate',q)
     #Load data
     trainloader,testloader = load_data_cifar(args.ten,args.dimension,mlbs,args.phy_bs,args.n_workers,generator,args.normalization)
     #if args.clipping_mode == 'mini':
