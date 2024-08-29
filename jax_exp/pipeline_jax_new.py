@@ -416,7 +416,7 @@ class TrainerModule:
             def foo(t, args):
                 acc_grad = args
                 mask = masks[t]
-                data_x = (physical_batches[t] * mask)
+                data_x = (physical_batches[t] * mask.reshape(-1, 1, 1, 1))
                 data_y = (physical_labels[t] * mask)
 
                 grads,loss,acc,cor,num_clipped = self.mini_batch_dif_clip2((data_x,data_y),params,self.max_grad_norm)
