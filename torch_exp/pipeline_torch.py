@@ -458,7 +458,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 torch.set_grad_enabled(True)
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
-                #loss = loss / expected_acc_steps
+                loss = loss / expected_acc_steps
                 loss.backward()
                 acc += 1
                 if not flag._check_skip_next_step():
