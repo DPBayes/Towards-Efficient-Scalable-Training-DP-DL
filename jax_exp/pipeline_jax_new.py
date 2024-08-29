@@ -370,8 +370,8 @@ class TrainerModule:
             acc_grads = jax.tree_util.tree_map(jnp.zeros_like,params)
             def foo(t, args):
                 acc_grad = args
-                mask = masks[t].reshape(-1, 1, 1, 1)
-                data_x = (physical_batches[t] * mask)
+                mask = masks[t]
+                data_x = (physical_batches[t] * mask.reshape(-1, 1, 1, 1))
                 data_y = (physical_labels[t] * mask)
                 grads,loss,acc,cor = self.non_private_update(params,(data_x,data_y))
                 return jax.tree_util.tree_map(
