@@ -190,20 +190,34 @@ def get_privacy_engine(model,loader,optimizer,lib,sample_rate,expected_batch_siz
     
     return None
 
-def get_privacy_engine_opacus(model,loader,optimizer,g,args):
+def get_privacy_engine_opacus(model,loader,optimizer,criterion,g,args):
     print('Opacus Engine')
     privacy_engine = PrivacyEngineOpacus(accountant=args.accountant)
-    
-    model, optimizer, loader = privacy_engine.make_private_with_epsilon(
-        module = model,
-        optimizer=optimizer,
-        data_loader=loader,
-        epochs=args.epochs,
-        target_epsilon=args.epsilon,
-        target_delta=args.target_delta,
-        max_grad_norm=args.grad_norm,
-        noise_generator=g
-    )
+
+    if args.clipping_mode == 'O-ghost':
+        model, optimizer,criterion, loader = privacy_engine.make_private_with_epsilon(
+            module = model,
+            optimizer=optimizer,
+            data_loader=loader,
+            epochs=args.epochs,
+            target_epsilon=args.epsilon,
+            target_delta=args.target_delta,
+            max_grad_norm=args.grad_norm,
+            criterion=criterion,
+            grad_sample_mode="ghost",
+            noise_generator=g
+        )
+    else:
+        model, optimizer, loader = privacy_engine.make_private_with_epsilon(
+            module = model,
+            optimizer=optimizer,
+            data_loader=loader,
+            epochs=args.epochs,
+            target_epsilon=args.epsilon,
+            target_delta=args.target_delta,
+            max_grad_norm=args.grad_norm,
+            noise_generator=g
+        )
     
     print('optimizer params',
     'noise multiplier',optimizer.noise_multiplier,
@@ -213,7 +227,7 @@ def get_privacy_engine_opacus(model,loader,optimizer,g,args):
     
 
         
-    return model,optimizer,loader,privacy_engine
+    return model,optimizer,loader,privacy_engine,criterion
 
 def get_loss_function(lib):
     if lib == 'private_vision':
@@ -720,7 +734,7 @@ def print_param_shapes(model, prefix=''):
 def main(local_rank,rank, world_size, args):
     
     print(args)
-    models_dict = {'fastDP':['BK-ghost', 'BK-MixGhostClip', 'BK-MixOpt'],'private_vision':['PV-ghost','PV-ghost_mixed'],'opacus':['O-flat','O-adaptive','O-per_layer'],'non':['non-private']} # Map from model to library
+    models_dict = {'fastDP':['BK-ghost', 'BK-MixGhostClip', 'BK-MixOpt'],'private_vision':['PV-ghost','PV-ghost_mixed'],'opacus':['O-flat','O-adaptive','O-per_layer','O-ghost'],'non':['non-private']} # Map from model to library
     
     lib = None
 
@@ -768,7 +782,7 @@ def main(local_rank,rank, world_size, args):
 
     #Get the privacy engine depending on the library. In the case of the non private version, the privacy engine will be None
     if lib == 'opacus':
-        model, optimizer, train_loader,privacy_engine = get_privacy_engine_opacus(model,train_loader,optimizer,generator_gpu,args)
+        model, optimizer, train_loader,privacy_engine,criterion = get_privacy_engine_opacus(model,train_loader,optimizer,criterion,generator_gpu,args)
         print('Opacus model type',type(model))
         print('Opacus optimizer type',type(optimizer))
         print('Opacus loader type',type(train_loader))
