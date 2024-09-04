@@ -169,10 +169,6 @@ class TrainerModule:
         delta = accountant.get_delta(epsilon)
 
         return epsilon,delta
-    
-    def set_loaders(self,train_loader,test_loader):
-        self.train_loader = train_loader
-        self.test_loader = test_loader
 
     def calculate_noise(self,size):
         noise_multiplier = get_noise_multiplier(
@@ -189,55 +185,55 @@ class TrainerModule:
         self.optimizer = optax.adam(learning_rate=self.lr)
         self.opt_state = self.optimizer.init(self.params)
 
-    def init_with_chain(self,size,sample_rate):
-        print('init optimizer, size ',size)
+    # def init_with_chain(self,size,sample_rate):
+    #     print('init optimizer, size ',size)
 
-        expected_bs = (size * sample_rate)
+    #     expected_bs = (size * sample_rate)
 
-        total_steps = int(size//expected_bs)
-        print('total steps',total_steps)
+    #     total_steps = int(size//expected_bs)
+    #     print('total steps',total_steps)
 
-        expected_acc_steps = expected_bs // self.physical_bs
+    #     expected_acc_steps = expected_bs // self.physical_bs
 
-        print('expected acc steps',expected_acc_steps)
+    #     print('expected acc steps',expected_acc_steps)
 
-        optimizer = optax.chain(
-            add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
-            optax.adam(learning_rate=self.lr)
-        )
+    #     optimizer = optax.chain(
+    #         add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
+    #         optax.adam(learning_rate=self.lr)
+    #     )
         
-        self.optimizer = optax.MultiSteps(optimizer,every_k_schedule=int(expected_acc_steps),use_grad_mean=False)
+    #     self.optimizer = optax.MultiSteps(optimizer,every_k_schedule=int(expected_acc_steps),use_grad_mean=False)
 
-        self.opt_state  = self.optimizer.init(self.params)
+    #     self.opt_state  = self.optimizer.init(self.params)
 
-        #print('self opt after init',self.opt_state)
+    #     #print('self opt after init',self.opt_state)
 
-    def init_with_chain2(self,size,sample_rate):
-        print('init optimizer, size ',size)
+    # def init_with_chain2(self,size,sample_rate):
+    #     print('init optimizer, size ',size)
 
-        expected_bs = (size * sample_rate)
+    #     expected_bs = (size * sample_rate)
 
-        #total_steps = int(size//expected_bs)
-        #print('total steps',total_steps)
+    #     #total_steps = int(size//expected_bs)
+    #     #print('total steps',total_steps)
 
-        #expected_acc_steps = expected_bs // self.physical_bs
+    #     #expected_acc_steps = expected_bs // self.physical_bs
 
-        print('expected batch size',expected_bs)
+    #     print('expected batch size',expected_bs)
 
-        print('noise multiplier',self.noise_multiplier,'max grad norm',self.max_grad_norm,'noise',self.noise_multiplier*self.max_grad_norm)
+    #     print('noise multiplier',self.noise_multiplier,'max grad norm',self.max_grad_norm,'noise',self.noise_multiplier*self.max_grad_norm)
 
-        #noise_state = AddNoiseStateC(self.seed)
+    #     #noise_state = AddNoiseStateC(self.seed)
 
-        self.optimizer = optax.chain(
-            add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
-            optax.adam(learning_rate=self.lr)
-        )
+    #     self.optimizer = optax.chain(
+    #         add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
+    #         optax.adam(learning_rate=self.lr)
+    #     )
         
-        #self.optimizer = optax.MultiSteps(optimizer,every_k_schedule=int(expected_acc_steps),use_grad_mean=False)
+    #     #self.optimizer = optax.MultiSteps(optimizer,every_k_schedule=int(expected_acc_steps),use_grad_mean=False)
 
-        self.opt_state  = self.optimizer.init(self.params)
+    #     self.opt_state  = self.optimizer.init(self.params)
 
-        #print('self opt after init',self.opt_state)
+    #     #print('self opt after init',self.opt_state)
         
     
     def calculate_metrics(self,params,batch):
@@ -398,7 +394,7 @@ class TrainerModule:
             del x,y,physical_batches,physical_labels
         return params,opt_state
     
-    @jax.jit
+    @partial(jit, static_argnums=0)
     def process_a_physical_batch(self,mu,physical_batch, mask,C):
         foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
         (loss_val,(acc,cor)), px_grads = jax.vmap(foo)(physical_batch)
@@ -412,7 +408,7 @@ class TrainerModule:
         clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
         return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
     
-    @jax.jit
+    @partial(jit, static_argnums=0)
     def process_a_physical_batch2(self,mu,physical_batch,physical_y, mask,C):
         foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
         (loss_val,(acc,cor)), px_grads = jax.vmap(foo)((physical_batch,physical_y))
