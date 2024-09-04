@@ -761,7 +761,7 @@ def main(local_rank,rank, world_size, args):
     print('For lib {} with train_loader dataset size {} and train loader size {} and world size {}'.format(lib,len(train_loader.dataset),len(train_loader),world_size))
 
     model_s = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
-
+    print('device',device,'world size',world_size,'rank',rank)
     if lib == 'non':
         model = DDP(model_s,device_ids=[device])
     else:
