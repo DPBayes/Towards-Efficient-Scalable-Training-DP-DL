@@ -464,7 +464,7 @@ class TrainerModule:
     def train_private_v1(self,train_loader,test_loader,k,q,noise_std,C,max_lb_size):
         for epoch in range(self.epochs):
             for batch_idx,batch in enumerate(train_loader): #logical
-                self.params,self.opt_state =self.private_iteration(batch,self.params,self.opt_state,k,q,batch_idx,max_lb_size,noise_std,C)
+                self.params,self.opt_state =self.private_iteration_v1(batch,self.params,self.opt_state,k,q,batch_idx,max_lb_size,noise_std,C)
                 _,acc,_,_ = self.eval_model(test_loader)
                 print('end epoch',epoch,'acc',acc)
         return self.eval_model(test_loader)
@@ -472,7 +472,7 @@ class TrainerModule:
     def train_private_v2(self,train_loader,test_loader,k,q,noise_std,C,max_lb_size):
         for epoch in range(self.epochs):
             for batch_idx,batch in enumerate(train_loader): #logical
-                self.params,self.opt_state =self.private_iteration(batch,self.params,self.opt_state,k,q,batch_idx,max_lb_size,noise_std,C)
+                self.params,self.opt_state =self.private_iteration_v2(batch,self.params,self.opt_state,k,q,batch_idx,max_lb_size,noise_std,C)
                 _,acc,_,_ = self.eval_model(test_loader)
                 print('end epoch',epoch,'acc',acc)
         return self.eval_model(test_loader)
