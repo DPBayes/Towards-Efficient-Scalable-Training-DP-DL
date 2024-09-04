@@ -400,8 +400,22 @@ class TrainerModule:
     
     @jax.jit
     def process_a_physical_batch(self,mu,physical_batch, mask,C):
-        foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(x, mu)
+        foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
         (loss_val,(acc,cor)), px_grads = jax.vmap(foo)(physical_batch)
+
+        def clip_mask_and_sum(x, mask, clipping_multiplier):
+            return (mask * clipping_multiplier) @ x
+
+        px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x, axis=-1)**2, px_grads)
+        flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
+        px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
+        clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
+        return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
+    
+    @jax.jit
+    def process_a_physical_batch2(self,mu,physical_batch,physical_y, mask,C):
+        foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
+        (loss_val,(acc,cor)), px_grads = jax.vmap(foo)((physical_batch,physical_y))
 
         def clip_mask_and_sum(x, mask, clipping_multiplier):
             return (mask * clipping_multiplier) @ x
@@ -415,7 +429,8 @@ class TrainerModule:
     def private_iteration_v1(self,logical_batch,params,opt_state,k,q,t,max_lb_size,noise_std,C):
         sampling_rng = jax.random.PRNGKey(t + 1)
         batch_rng, binomial_rng = jax.random.split(sampling_rng, 2)
-        physical_batches = jnp.array(jnp.split(logical_batch, k)) # k x pbs x dim
+        physical_batches = jnp.array(jnp.split(logical_batch[0], k)) # k x pbs x dim
+        physical_labels = jnp.array(jnp.split(logical_batch[1], k))
     
         actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(len(logical_batch),), p=q).sum()
         masks = jnp.ones(max_lb_size)
@@ -423,7 +438,7 @@ class TrainerModule:
         masks = masks.at[-n_masked_elements].set(0)
         masks = jnp.array(jnp.split(masks, k))
 
-        acc_grads = jax.vmap(self.process_a_physical_batch,in_axes=(None,0,0,None))(params,physical_batches,masks,C)
+        acc_grads = jax.vmap(self.process_a_physical_batch2,in_axes=(None,0,0,0,None))(params,physical_batches,physical_labels,masks,C)
 
         sum_grads = jax.tree_util.tree_map(lambda g: jnp.sum(g, axis=0), acc_grads)
 
@@ -437,8 +452,8 @@ class TrainerModule:
     def private_iteration_v2(self,logical_batch,params,opt_state,k,q,t,max_lb_size,noise_std,C):
         sampling_rng = jax.random.PRNGKey(t + 1)
         batch_rng, binomial_rng = jax.random.split(sampling_rng, 2)
-        physical_batches = jnp.array(jnp.split(logical_batch, k)) # k x pbs x dim
-    
+        physical_batches = jnp.array(jnp.split(logical_batch[0], k)) # k x pbs x dim
+        physical_labels = jnp.array(jnp.split(logical_batch[1], k))
         actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(len(logical_batch),), p=q).sum()
         masks = jnp.ones(max_lb_size)
         n_masked_elements = max_lb_size - actual_batch_size
@@ -448,8 +463,8 @@ class TrainerModule:
             
         ### gradient accumulation
         accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
-        for pb, mask in zip(physical_batches, masks):
-            sum_of_clipped_grads_from_pb = self.process_a_physical_batch(pb, params, C, mask)
+        for pb,yb, mask in zip(physical_batches,physical_labels, masks):
+            sum_of_clipped_grads_from_pb = self.process_a_physical_batch(params,(pb,yb),mask,C)
             accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                     accumulated_clipped_grads, 
                                                     sum_of_clipped_grads_from_pb
