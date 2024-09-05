@@ -421,8 +421,8 @@ class TrainerModule:
 
         px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x, axis=-1)**2, px_grads)
         flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
-        print(len(flattened_px_per_param_sq_norms),type(flattened_px_per_param_sq_norms))
-        px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
+        print(len(flattened_px_per_param_sq_norms[0]),len(flattened_px_per_param_sq_norms[-1]),type(flattened_px_per_param_sq_norms))
+        px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms[:len(flattened_px_per_param_sq_norms)-1]), axis=0))
         clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
         return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
     
