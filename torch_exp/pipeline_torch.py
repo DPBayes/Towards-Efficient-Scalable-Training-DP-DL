@@ -236,8 +236,8 @@ def get_loss_function(lib):
         criterion = nn.CrossEntropyLoss()
     return criterion
 
-def privatize_dataloader(data_loader):
-    return DPDataLoader.from_data_loader(data_loader,distributed=True)
+def privatize_dataloader(data_loader,dist):
+    return DPDataLoader.from_data_loader(data_loader,distributed=dist)
     
 def prepare_vision_model(model,model_name):
 
@@ -874,6 +874,10 @@ def main_non_distributed(args):
     for key,val in models_dict.items():
         if args.clipping_mode in val:
             lib = key
+    if args.distributed == 'True':
+        dist = True
+    else:
+        dist = False
 
     print('run for the lib {} and model {}'.format(lib,args.clipping_mode))
     timestamp = datetime.now().strftime('%Y%m%d')
@@ -912,14 +916,14 @@ def main_non_distributed(args):
         print('Opacus optimizer type',type(optimizer))
         print('Opacus loader type',type(train_loader))
     elif lib != 'non':
-        train_loader = privatize_dataloader(train_loader) #The BatchMemoryManager of Opacus does this step. Since here we are implementing our own, we have to do this step explicitly before.
+        train_loader = privatize_dataloader(train_loader,dist) #The BatchMemoryManager of Opacus does this step. Since here we are implementing our own, we have to do this step explicitly before.
         sample_rate = 1 / len(train_loader)
         expected_batch_size = int(len(train_loader.dataset) * sample_rate)
         world_size = 1
         expected_batch_size /= world_size
         privacy_engine = get_privacy_engine(model,train_loader,optimizer,lib,sample_rate,expected_batch_size,args)
     elif lib == 'non':
-        train_loader = privatize_dataloader(train_loader) #In this case is only to be consistent with the sampling
+        train_loader = privatize_dataloader(train_loader,dist) #In this case is only to be consistent with the sampling
         sample_rate = 1 / len(train_loader)
 
         expected_batch_size = int(len(train_loader.dataset) * sample_rate)
@@ -930,7 +934,7 @@ def main_non_distributed(args):
     
     if args.torch2 == 'True':
         model = torch.compile(model)
-
+        
     print('memory summary before training: \n',torch.cuda.memory_summary(),flush=True)
     
     test_accs = np.zeros(args.epochs)
