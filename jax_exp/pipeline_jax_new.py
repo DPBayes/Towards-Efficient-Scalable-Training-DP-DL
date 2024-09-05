@@ -245,6 +245,7 @@ class TrainerModule:
     
     def loss(self,params,batch):
         inputs,targets = batch
+        print('inputs shape in loss',inputs.shape)
         logits = self.model.apply({'params':params},inputs)
         predicted_class = jnp.argmax(logits,axis=-1)
 
@@ -410,7 +411,7 @@ class TrainerModule:
     
     @partial(jit, static_argnums=0)
     def process_a_physical_batch2(self,mu,physical_batch,physical_y, mask,C):
-
+        print("inputs shape",physical_batch.shape)
         jax.debug.print("inputs shape {shape}",shape=physical_batch.shape)
         foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
         (loss_val,(acc,cor)), px_grads = jax.vmap(foo)((physical_batch,physical_y))
