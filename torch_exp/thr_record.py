@@ -1,5 +1,5 @@
 import argparse
-from pipeline_torch import main
+from pipeline_torch import main,main_non_distributed
 import os
 import csv
 import numpy as np
@@ -18,8 +18,6 @@ def get_free_port():
 
 
 if __name__ == '__main__':
-
-    port = get_free_port()
 
     path_log = 'thr_record'
 
@@ -48,20 +46,31 @@ if __name__ == '__main__':
     parser.add_argument('--file',type=str,default='thr_record')
     parser.add_argument('--tf32',type=str,default='False')
     parser.add_argument('--torch2',type=str,default='False')
+    parser.add_argument('--distributed',type=str,default='True')
     args = parser.parse_args()
     path_log = args.file
     thr = None
     acc = None
     t_th = None
-    try:
-        world_size = torch.cuda.device_count()
-        dist.init_process_group(backend='nccl')
-        world_size = dist.get_world_size()
-        local_rank = int(os.environ['LOCAL_RANK'])
-        rank = int(os.environ['RANK'])
-        torch.cuda.set_device(local_rank)
-        main(local_rank,rank,world_size,args)
-        err = 'None'
-    except RuntimeError as e:
-        print(e)
-        err = 'OOM'
+
+    if args.distributed == 'True':
+        port = get_free_port()
+        try:
+            world_size = torch.cuda.device_count()
+            dist.init_process_group(backend='nccl')
+            world_size = dist.get_world_size()
+            local_rank = int(os.environ['LOCAL_RANK'])
+            rank = int(os.environ['RANK'])
+            torch.cuda.set_device(local_rank)
+            main(local_rank,rank,world_size,args)
+            err = 'None'
+        except RuntimeError as e:
+            print(e)
+            err = 'OOM'
+    else:
+        try:
+            main_non_distributed(args)
+            err = 'None'
+        except RuntimeError as e:
+            print(e)
+            err = 'OOM'

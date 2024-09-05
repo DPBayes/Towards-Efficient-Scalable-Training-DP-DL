@@ -859,3 +859,124 @@ def main(local_rank,rank, world_size, args):
 
     if world_size > 1:  
         torch.distributed.destroy_process_group()
+
+def main_non_distributed(args):
+    
+    print(args)
+    models_dict = {'fastDP':['BK-ghost', 'BK-MixGhostClip', 'BK-MixOpt'],'private_vision':['PV-ghost','PV-ghost_mixed'],'opacus':['O-flat','O-adaptive','O-per_layer','O-ghost'],'non':['non-private']} # Map from model to library
+    
+    lib = None
+
+    if args.tf32 == 'True':
+        torch.backends.cuda.matmul.allow_tf32=True
+        torch.backends.cudnn.allow_tf32=True
+
+    for key,val in models_dict.items():
+        if args.clipping_mode in val:
+            lib = key
+
+    print('run for the lib {} and model {}'.format(lib,args.clipping_mode))
+    timestamp = datetime.now().strftime('%Y%m%d')
+    #writer = SummaryWriter('./runs/{}_cifar_{}_{}_model_{}_e_{}_{}'.format(args.test,args.model,args.ten,args.clipping_mode,args.epsilon,timestamp),flush_secs=30)
+    #collector = None
+    print('Model from',timestamp)
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    generator_gpu,g_cpu = set_seeds(args.seed,device)
+
+    train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu)
+
+    print('For lib {} with train_loader dataset size {} and train loader size {} and world size {}'.format(lib,len(train_loader.dataset),len(train_loader),world_size))
+
+    model_s = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
+    print('device',device)
+    
+    #If there are layers not supported by the private vision library. In the case of the ViT, it shouldn't freeze anything
+    if lib=='private_vision':
+        model = prepare_vision_model(model,args.model)
+
+    total_params,trainable_params = count_params(model)
+
+    print("The model has in total {} params, and {} are trainable".format(total_params,trainable_params),flush=True)
+    print_param_shapes(model)
+
+    criterion = get_loss_function(lib)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    privacy_engine = None
+
+    #Get the privacy engine depending on the library. In the case of the non private version, the privacy engine will be None
+    if lib == 'opacus':
+        model, optimizer, train_loader,privacy_engine,criterion = get_privacy_engine_opacus(model,train_loader,optimizer,criterion,generator_gpu,args)
+        print('Opacus model type',type(model))
+        print('Opacus optimizer type',type(optimizer))
+        print('Opacus loader type',type(train_loader))
+    elif lib != 'non':
+        train_loader = privatize_dataloader(train_loader) #The BatchMemoryManager of Opacus does this step. Since here we are implementing our own, we have to do this step explicitly before.
+        sample_rate = 1 / len(train_loader)
+        expected_batch_size = int(len(train_loader.dataset) * sample_rate)
+        world_size = 1
+        expected_batch_size /= world_size
+        privacy_engine = get_privacy_engine(model,train_loader,optimizer,lib,sample_rate,expected_batch_size,args)
+    elif lib == 'non':
+        train_loader = privatize_dataloader(train_loader) #In this case is only to be consistent with the sampling
+        sample_rate = 1 / len(train_loader)
+
+        expected_batch_size = int(len(train_loader.dataset) * sample_rate)
+
+        n_acc_steps = expected_batch_size // args.phy_bs # gradient accumulation steps
+
+        print('Gradient Accumulation Steps',n_acc_steps)
+    
+    if args.torch2 == 'True':
+        model = torch.compile(model)
+
+    print('memory summary before training: \n',torch.cuda.memory_summary(),flush=True)
+    
+    test_accs = np.zeros(args.epochs)
+    throughs = np.zeros(args.epochs)
+    total_thr = np.zeros(args.epochs)
+    acc_wt = test(device,model,lib,test_loader,criterion,0)
+    print('Without training accuracy',acc_wt)
+    for epoch in range(args.epochs):
+        print('memory allocated ',torch.cuda.memory_allocated()/1024**2,flush=True)
+        if lib == 'opacus':
+            th,t_th = train_opacus(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            privacy_results = privacy_engine.get_epsilon(args.target_delta) # type: ignore
+            privacy_results = {'eps_rdp':privacy_results}
+            print('Privacy results after training {}'.format(privacy_results),flush=True)
+        elif lib == 'non':
+            #train_loader.sampler.set_epoch(epoch)
+            #th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
+            th,t_th = train_non_private_2(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
+        else:
+            th,t_th = train(device,model,lib,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            privacy_results = privacy_engine.get_privacy_spent() # type: ignore
+            print('Privacy results after training {}'.format(privacy_results),flush=True)
+        throughs[epoch] = th
+        total_thr[epoch] = t_th
+        test_accs[epoch] = test(device,model,lib,test_loader,criterion,epoch)
+         
+        torch.cuda.empty_cache()
+
+    print('--- Finished training ---',flush=True)
+    acc = test(device,model,lib,test_loader,criterion,epoch)
+    thr = np.mean(throughs)
+    #acc = test_accs[-1]
+    t_th = np.mean(total_thr)
+
+    err = None
+
+    row = [args.model,args.clipping_mode,args.normalization,args.epochs,args.phy_bs,err,thr,t_th,acc,args.epsilon]
+
+    path_log = args.file+ ".csv"
+
+    exists = os.path.exists(path_log)
+
+    with open(path_log, mode="a") as f:    
+        writer = csv.writer(f, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+        if not exists:
+            writer.writerow(["model", "clipping_mode","normalization","epochs", "physical_batch", "fail",'throughput','total_throughput','acc_test',"epsilon"])
+
+        writer.writerow(row)
