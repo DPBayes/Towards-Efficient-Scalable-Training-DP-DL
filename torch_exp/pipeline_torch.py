@@ -885,7 +885,7 @@ def main_non_distributed(args):
 
     generator_gpu,g_cpu = set_seeds(args.seed,device)
 
-    train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu)
+    train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu,world_size=1)
 
     print('For lib {} with train_loader dataset size {} and train loader size {} and world size {}'.format(lib,len(train_loader.dataset),len(train_loader),world_size))
 
