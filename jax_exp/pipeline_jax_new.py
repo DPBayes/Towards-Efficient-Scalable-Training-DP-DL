@@ -716,7 +716,7 @@ def image_to_numpy(img):
 def image_to_numpy_wo_t(img):
     img = np.array(img, dtype=np.float32)
     img = ((img / 255.) - DATA_MEANS) / DATA_STD
-    img = np.transpose(img,[2,0,1])
+    #img = np.transpose(img,[2,0,1])
     return img
 
 def image_to_numpy_wo_t2(img):
