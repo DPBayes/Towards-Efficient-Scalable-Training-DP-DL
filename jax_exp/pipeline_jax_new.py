@@ -411,6 +411,8 @@ class TrainerModule:
     
     @partial(jit, static_argnums=0)
     def process_a_physical_batch2(self,mu,physical_batch,physical_y, mask,C):
+        physical_batch = jax.tree_map(lambda x: x[:, None], physical_batch)
+        physical_y = jax.tree_map(lambda x: x[:, None], physical_y)
         print("inputs shape",physical_batch.shape)
         jax.debug.print("inputs shape {shape}",shape=physical_batch.shape)
         foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
