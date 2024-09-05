@@ -410,6 +410,8 @@ class TrainerModule:
     
     @partial(jit, static_argnums=0)
     def process_a_physical_batch2(self,mu,physical_batch,physical_y, mask,C):
+
+        jax.debug.print("inputs shape {shape}",shape=physical_batch.shape)
         foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
         (loss_val,(acc,cor)), px_grads = jax.vmap(foo)((physical_batch,physical_y))
 
@@ -433,7 +435,7 @@ class TrainerModule:
         n_masked_elements = max_lb_size - actual_batch_size
         masks = masks.at[-n_masked_elements].set(0)
         masks = jnp.array(jnp.split(masks, k))
-
+        print(physical_batches.shape)
         acc_grads = jax.vmap(self.process_a_physical_batch2,in_axes=(None,0,0,0,None))(params,physical_batches,physical_labels,masks,C)
 
         sum_grads = jax.tree_util.tree_map(lambda g: jnp.sum(g, axis=0), acc_grads)
