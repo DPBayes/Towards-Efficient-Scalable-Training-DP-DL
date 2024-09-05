@@ -419,14 +419,17 @@ class TrainerModule:
         def clip_mask_and_sum(x, mask, clipping_multiplier):
             return (mask * clipping_multiplier) @ x
 
+        print(type(px_grads),px_grads)
+
         px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x, axis=-1)**2, px_grads)
         flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
-        print(len(flattened_px_per_param_sq_norms[0]),len(flattened_px_per_param_sq_norms[-1]),type(flattened_px_per_param_sq_norms))
+        print(len(flattened_px_per_param_sq_norms[0].shape),len(flattened_px_per_param_sq_norms[-1].shape),type(flattened_px_per_param_sq_norms))
         #global_grad_norms = jax.vmap(linear_algebra.global_norm)(flattened_px_per_param_sq_norms)
         #jnp.sqrt(sum(jnp.sum(numerics.abs_sq(x)) for x in jax.tree_util.tree_leaves(updates)))
         #sum_params = jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0)
-        px_grad_norms = jnp.sqrt(jnp.sum(x) for x in jax.tree_util.tree_leaves(flattened_px_per_param_sq_norms))
+        #px_grad_norms = jnp.sqrt(jnp.sum(x) for x in flattened_px_per_param_sq_norms)
         #px_grad_norms = jnp.sqrt(sum_params)
+        px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
         clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
         return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
     
