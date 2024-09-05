@@ -887,9 +887,9 @@ def main_non_distributed(args):
 
     train_loader,test_loader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,num_workers=args.n_workers,normalization=args.normalization,lib=lib,generator=g_cpu,world_size=1)
 
-    print('For lib {} with train_loader dataset size {} and train loader size {} and world size {}'.format(lib,len(train_loader.dataset),len(train_loader),world_size))
+    print('For lib {} with train_loader dataset size {} and train loader size {} and world size {}'.format(lib,len(train_loader.dataset),len(train_loader),1))
 
-    model_s = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
+    model = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
     print('device',device)
     
     #If there are layers not supported by the private vision library. In the case of the ViT, it shouldn't freeze anything
