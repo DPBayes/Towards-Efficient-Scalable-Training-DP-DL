@@ -774,11 +774,10 @@ def main(local_rank,rank, world_size, args):
 
     model_s = load_model(args.model,n_classes=args.ten,lib=lib).to(device)
     print('device',device,'world size',world_size,'rank',rank)
-    if world_size > 1:
-        if lib == 'non':
-            model = DDP(model_s,device_ids=[device])
-        else:
-            model = DPDDP(model_s)
+    if lib == 'non':
+        model = DDP(model_s,device_ids=[device])
+    else:
+        model = DPDDP(model_s)
     
     #If there are layers not supported by the private vision library. In the case of the ViT, it shouldn't freeze anything
     if lib=='private_vision':
