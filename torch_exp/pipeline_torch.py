@@ -475,7 +475,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 #Measure time, after loading data to the GPU
                 starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
                 starter.record()  # type: ignore
-                torch.set_grad_enabled(True)
+                start_time = time.perf_counter()
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
                 loss = loss / expected_acc_steps
@@ -489,9 +489,13 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 
                 ender.record() #type: ignore
                 torch.cuda.synchronize()
+                end_time = time.perf_counter()
+        
+                total_time += (end_time - start_time)
 
                 curr_time = starter.elapsed_time(ender)/1000
-                total_time_epoch += curr_time
+                #total_time_epoch += curr_time
+                total_time_epoch += total_time
                 batch_loss += loss.item()
                 train_loss += loss.item()
                 _, predicted = outputs.max(1)
