@@ -398,13 +398,13 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
             torch.cuda.synchronize()
             end_time = time.perf_counter()
         
-            total_time += (end_time - start_time)
+            total_time_prf = (end_time - start_time)
             ender.record() #type: ignore
 
 
             curr_time = starter.elapsed_time(ender)/1000
             #total_time_epoch += curr_time
-            total_time_epoch = total_time
+            total_time_epoch = total_time_prf
             if lib  == 'private_vision':
                 train_loss += loss.mean().item()
             else:
@@ -491,11 +491,11 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 torch.cuda.synchronize()
                 end_time = time.perf_counter()
         
-                total_time += (end_time - start_time)
+                total_time_perf = (end_time - start_time)
 
                 curr_time = starter.elapsed_time(ender)/1000
                 #total_time_epoch += curr_time
-                total_time_epoch += total_time
+                total_time_epoch += total_time_perf
                 batch_loss += loss.item()
                 train_loss += loss.item()
                 _, predicted = outputs.max(1)
