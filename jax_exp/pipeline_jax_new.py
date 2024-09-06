@@ -427,7 +427,7 @@ class TrainerModule:
         #global_grad_norms = jax.vmap(linear_algebra.global_norm)(flattened_px_per_param_sq_norms)
         #jnp.sqrt(sum(jnp.sum(numerics.abs_sq(x)) for x in jax.tree_util.tree_leaves(updates)))
         #sum_params = jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0)
-        px_grad_norms = jnp.sqrt(jnp.sum(x,axis=0) for x in flattened_px_per_param_sq_norms)
+        px_grad_norms = jnp.sqrt([jnp.sum(x,axis=0) for x in flattened_px_per_param_sq_norms])
         #px_grad_norms = jnp.sqrt(sum_params)
         #px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
         clipping_multiplier = jnp.minimum(1., C/px_grad_norms)

@@ -48,7 +48,7 @@ import torch.multiprocessing as mp
 from torch.distributed import init_process_group, destroy_process_group
 
 import csv
-
+import time
 #Defines each worker seed. Since each worker needs a different seed.
 #The worker_id is a parameter given by the loader, but it is not used inside the method
 def seed_worker(worker_id):
@@ -367,17 +367,18 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
             if small_flag:
                 print('Inputs type',inputs.dtype,flush=True)
                 small_flag = False
-            starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
-            starter_t.record()
             size_b = len(inputs)
             #print('Batch size of ',size_b)
             samples_used += size_b
-            inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
+            starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+            starter_t.record()
 
+            inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
+            torch.set_grad_enabled(True)
             #Measure time, after loading data to the GPU
             starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
             starter.record()  # type: ignore
-            torch.set_grad_enabled(True)
+            start_time = time.perf_counter()
             outputs = model(inputs)
             loss = criterion(outputs, targets)
             if lib == 'private_vision':
@@ -394,11 +395,16 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
                     optimizer.step()
                     optimizer.zero_grad()
 
-            ender.record() #type: ignore
             torch.cuda.synchronize()
+            end_time = time.perf_counter()
+        
+            total_time += (end_time - start_time)
+            ender.record() #type: ignore
+
 
             curr_time = starter.elapsed_time(ender)/1000
-            total_time_epoch += curr_time
+            #total_time_epoch += curr_time
+            total_time_epoch = total_time
             if lib  == 'private_vision':
                 train_loss += loss.mean().item()
             else:
@@ -416,9 +422,9 @@ def train(device,model,lib,loader,optimizer,criterion,epoch,physical_batch):
                 correct += correct_batch
                 total_batch = 0
                 correct_batch = 0
-                
+        torch.cuda.synchronize()        
         ender_t.record() #type: ignore
-        torch.cuda.synchronize()
+        
         curr_t = starter_t.elapsed_time(ender_t)/1000
         total_time += curr_t  
     del loss
