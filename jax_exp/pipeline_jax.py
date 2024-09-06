@@ -902,7 +902,7 @@ class TrainerModule:
                     #with self.collector(tag='batch'):
                     samples_used += len(batch[0])
                     #print(samples_used)
-                    start_time = time.time()
+                    start_time = time.perf_counter()
                     grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                     acc_grads = jax.tree_util.tree_map(
                         functools.partial(_acc_update),
@@ -918,8 +918,10 @@ class TrainerModule:
                         #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                         times_up += 1
+
+                    #jax.block_until_ready()
                                                     
-                    batch_time = time.time() - start_time
+                    batch_time = time.perf_counter() - start_time
                     
                     train_loss += loss / expected_acc_steps
                     total_batch += len(batch[1])
@@ -950,6 +952,7 @@ class TrainerModule:
 
                         total_batch = 0
                         correct_batch = 0
+                    
         
             print('-------------End Epoch---------------',flush=True)
             print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
@@ -966,7 +969,7 @@ class TrainerModule:
 
             eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
             print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
-            
+            print('batch_idx',batch_idx,'samples used',samples_used,'samples used / batch_idx',samples_used/batch_idx,'physical batch size',self.physical_bs,flush=True)
             throughput_t = (samples_used)/epoch_time
             throughput = (samples_used)/total_time_epoch
             print('total time epoch - epoch time',np.abs(total_time_epoch - epoch_time),'total time epoch',total_time_epoch,'epoch time',epoch_time)
