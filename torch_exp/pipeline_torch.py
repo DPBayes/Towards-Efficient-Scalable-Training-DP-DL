@@ -471,7 +471,6 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
             inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
             with torch.set_grad_enabled(True):
 
-
                 #Measure time, after loading data to the GPU
                 starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
                 starter.record()  # type: ignore
@@ -636,6 +635,7 @@ def train_opacus(device,model,loader,optimizer,criterion,epoch,physical_batch):
             #Measure time, after loading data to the GPU
             starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
             starter.record()  # type: ignore
+            start_time = time.perf_counter()
             optimizer.zero_grad()
             torch.set_grad_enabled(True)
             outputs = model(inputs)
@@ -647,9 +647,13 @@ def train_opacus(device,model,loader,optimizer,criterion,epoch,physical_batch):
             #We want to measure just the actual computation, we do not care about the computation of the metrics
             ender.record() #type: ignore
             torch.cuda.synchronize()
+            end_time = time.perf_counter()
+        
+            total_time_perf = (end_time - start_time)
 
             curr_time = starter.elapsed_time(ender)/1000
-            total_time_epoch += curr_time
+            #total_time_epoch += curr_time
+            total_time_epoch += total_time_perf
                 
             train_loss += loss.item()
             _, predicted = outputs.max(1)
