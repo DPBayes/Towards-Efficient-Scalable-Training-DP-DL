@@ -242,7 +242,7 @@ class TrainerModule:
         logits = self.model.apply({'params':params},inputs)
         predicted_class = jnp.argmax(logits,axis=-1)
 
-        cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
+        cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).sum()
 
         vals = predicted_class == targets
         acc = jnp.mean(vals)
@@ -292,7 +292,7 @@ class TrainerModule:
 
         grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
 
-        return grads_unflat,jnp.mean(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
+        return grads_unflat,jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
 
     @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
@@ -588,7 +588,7 @@ class TrainerModule:
                         
                         updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,expected_bs,self.rng,acc_grads)
 
-                        old_params = self.params
+                        #old_params = self.params
                         #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
                         
@@ -910,7 +910,7 @@ class TrainerModule:
                     if not flag._check_skip_next_step():
                         print('about to update:')
                         acc_grads = jax.tree_util.tree_map(
-                            lambda x: x/expected_acc_steps,
+                            lambda x: x/expected_bs,
                             acc_grads)
                         #old_params = self.params
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
@@ -921,7 +921,7 @@ class TrainerModule:
                         #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                         times_up += 1
-                        
+
                     #jax.block_until_ready()
                                                     
                     batch_time = time.perf_counter() - start_time
