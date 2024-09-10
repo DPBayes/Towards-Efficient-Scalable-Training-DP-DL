@@ -746,7 +746,7 @@ class TrainerModule:
                             grads, acc_grads)
                         if not flag._check_skip_next_step():
                             print('about to update:')
-                            old_params = self.params
+                            #old_params = self.params
                             self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
                             gradient_step_ac += 1
                             print('flag queue',flag.skip_queue)
@@ -905,11 +905,14 @@ class TrainerModule:
                     start_time = time.perf_counter()
                     grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                     acc_grads = jax.tree_util.tree_map(
-                        functools.partial(_acc_update),
+                        lambda x,y: x+y,
                         grads, acc_grads)
                     if not flag._check_skip_next_step():
                         print('about to update:')
-                        old_params = self.params
+                        acc_grads = jax.tree_util.tree_map(
+                            lambda x: x/expected_acc_steps,
+                            acc_grads)
+                        #old_params = self.params
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
                         gradient_step_ac += 1
                         #print('flag queue',flag.skip_queue)
@@ -918,7 +921,7 @@ class TrainerModule:
                         #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                         times_up += 1
-
+                        
                     #jax.block_until_ready()
                                                     
                     batch_time = time.perf_counter() - start_time
