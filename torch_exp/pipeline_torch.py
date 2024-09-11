@@ -798,7 +798,8 @@ def main(local_rank,rank, world_size, args):
 
     #Get the privacy engine depending on the library. In the case of the non private version, the privacy engine will be None
     if lib == 'opacus':
-        model, optimizer, train_loader,privacy_engine,criterion = get_privacy_engine_opacus(model,train_loader,optimizer,criterion,generator_gpu,args)
+        criterion_opacus = get_loss_function(lib)
+        model, optimizer, train_loader,privacy_engine,criterion_opacus = get_privacy_engine_opacus(model,train_loader,optimizer,criterion_opacus,generator_gpu,args)
         print('Opacus model type',type(model))
         print('Opacus optimizer type',type(optimizer))
         print('Opacus loader type',type(train_loader))
@@ -832,7 +833,7 @@ def main(local_rank,rank, world_size, args):
     for epoch in range(args.epochs):
         print('memory allocated ',torch.cuda.memory_allocated()/1024**2,flush=True)
         if lib == 'opacus':
-            th,t_th = train_opacus(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs)
+            th,t_th = train_opacus(device,model,train_loader,optimizer,criterion_opacus,epoch,args.phy_bs)
             privacy_results = privacy_engine.get_epsilon(args.target_delta) # type: ignore
             privacy_results = {'eps_rdp':privacy_results}
             print('Privacy results after training {}'.format(privacy_results),flush=True)
