@@ -16,6 +16,8 @@ from dp_accounting import dp_event,rdp
 import argparse
 import time
 
+from flax.training import train_state
+
 import warnings
 
 def image_to_numpy_wo_t(img):
@@ -117,6 +119,10 @@ def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,nois
 
     return epsilon,delta
 
+def create_train_state(model,lr,params):
+    optimizer = optax.adam(lr)
+    return train_state.TrainState.create(apply_fn=model.apply,params=params,tx=optimizer)
+
 def load_model(model_name,rng,dimension,num_classes):
     print('load model name',model_name,flush=True)
     main_key, params_key= jax.random.split(key=rng,num=2)
@@ -214,27 +220,52 @@ def eval_step_non(model,params, batch):
     loss,acc,cor = loss_eval(params,model,batch)
     return loss, acc,cor
 
-def eval_model(data_loader,model,params):
+@jit
+def train_step(state,batch):
+    def loss_fn(params):
+        inputs,targets = batch
+        logits = state.apply_fn({'params':params},inputs)
+        predicted_class = jnp.argmax(logits,axis=-1)
+
+        cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
+        acc = jnp.mean(predicted_class ==targets)
+        
+        return cross_loss,acc
+    
+    grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+    (loss, acc), grads = grad_fn(state.params)
+    new_state = state.apply_gradients(grads=grads)
+    return new_state, loss, acc
+
+def train_epoch(state,data_loader):
+
+    def body_fn(state, batch):
+        new_state, loss, accuracy = train_step(state, batch)
+        return new_state, (loss, accuracy)
+
+    return jax.lax.scan(body_fn, state, data_loader)
+
+@jit
+def eval_step(state,batch):
+    inputs,targets = batch
+    logits = state.apply_fn({'params':state.params},inputs)
+    predicted_class = jnp.argmax(logits,axis=-1)
+    cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
+    cross_loss = jnp.mean(cross_losses)
+    vals = predicted_class == targets
+    return jnp.mean(vals)
+
+def eval_model(state,data_loader):
     # Test model on all images of a data loader and return avg loss
     accs = []
-    losses = []
-    test_loss = 0
-    total_test = 0
-    correct_test = 0
     batch_idx = 0
     for batch_idx,batch in enumerate(data_loader):
         print('eval',batch_idx)
-        loss, acc,cor = eval_step_non(model,params,batch)
-        test_loss += loss
-        correct_test += cor
-        total_test += len(batch[1])
-        accs.append(cor/len(batch[1]))
-        losses.append(float(loss))
+        acc = eval_step(state,batch)
+        accs.append(acc)
         del batch
     eval_acc = jnp.mean(jnp.array(accs))
-    eval_loss = jnp.mean(jnp.array(losses))
-    
-    return test_loss/len(data_loader),eval_acc,correct_test,total_test
+    return eval_acc
 
 def init_non_optimizer(lr,params):
     optimizer = optax.adam(learning_rate=lr)
@@ -518,10 +549,16 @@ def main(args):
     rng = jax.random.PRNGKey(args.seed)
     
     model,params = load_model(args.model,rng,args.dimension,args.ten)
+
+    state = create_train_state(model,args.lr,params)
     print('evaluating model before training',flush=True)
-    tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
-    print('Without trainig test loss',tloss)
-    print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')',flush=True)
+
+    test_acc = eval_model(state,testloader)
+
+
+    #tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
+    print('Without trainig test acc',test_acc)
+    #print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')',flush=True)
     if args.clipping_mode == 'non-private-virtual':
         throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
     elif args.clipping_mode == 'non-private':
