@@ -198,8 +198,8 @@ def loss(params,model,batch):
     cor = jnp.sum(vals)
 
     return cross_loss,(acc,cor)
-
-def loss_eval(model,params,batch):
+@jit
+def loss_eval(params,model,batch):
     inputs,targets = batch
     logits = model.apply({'params':params},inputs)
     predicted_class = jnp.argmax(logits,axis=-1)
@@ -211,7 +211,7 @@ def loss_eval(model,params,batch):
     return cross_loss,acc,cor
     
 def eval_step_non(model,params, batch):
-    loss,acc,cor = loss_eval(model,params,batch)
+    loss,acc,cor = loss_eval(params,model,batch)
     return loss, acc,cor
 
 def eval_model(data_loader,model,params):
@@ -251,7 +251,7 @@ def non_private_update(params,model,batch):
     (loss_val,(acc,cor)), grads = jax.value_and_grad(loss,has_aux=True)(params,model,batch)
     return grads,loss_val,acc,cor
 
-def non_private_training_mini_batch_clean(trainloader,testloader,epochs,physical_bs,model,lr):
+def non_private_training_mini_batch_clean(trainloader,testloader,params,model,epochs,physical_bs,lr):
 
     #Training
     print('Non private learning with mini batches')
@@ -523,9 +523,9 @@ def main(args):
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')',flush=True)
     if args.clipping_mode == 'non-private-virtual':
-        throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,args.epochs,args.phy_bs,model,args.lr)
+        throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
     elif args.clipping_mode == 'non-private':
-        throughputs,throughputs_t,comp_time = non_private_training_clean(trainloader,testloader,args.epochs,args.phy_bs,model,args.lr)
+        throughputs,throughputs_t,comp_time = non_private_training_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
     
     #elif args.clipping_mode == 'mini':
     #    throughputs,throughputs_t,comp_time,privacy_measures = private_training_mini_batch_clean(trainloader,testloader)
