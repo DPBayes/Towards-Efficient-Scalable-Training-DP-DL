@@ -242,8 +242,16 @@ def train_epoch(state,data_loader):
     def body_fn(state, batch):
         new_state, loss, accuracy = train_step(state, batch)
         return new_state, (loss, accuracy)
-
-    return jax.lax.scan(body_fn, state, data_loader)
+    
+    batch_idx = 0
+    train_loss = 0
+    train_acc = 0
+    for batch_idx,batch in enumerate(data_loader):
+        inputs,targets = jnp.array(batch[0]),jnp.array(batch[1])
+        state, loss, accuracy = train_step(state, (inputs,targets))
+        train_loss += loss
+        train_acc += accuracy
+    return state, (train_loss/batch_idx,train_acc/batch_idx)
 
 @jit
 def eval_step(state,batch):
@@ -260,7 +268,6 @@ def eval_model(state,data_loader):
     accs = []
     batch_idx = 0
     for batch_idx,batch in enumerate(data_loader):
-        print('eval',batch_idx)
         acc = eval_step(state,batch)
         accs.append(acc)
         del batch
@@ -558,21 +565,27 @@ def main(args):
 
     #tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
     print('Without trainig test acc',test_acc)
+
+    state, (train_loss, train_accuracy) = train_epoch(state,trainloader)
+
+    print(train_loss,train_accuracy)
     #print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')',flush=True)
-    if args.clipping_mode == 'non-private-virtual':
-        throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
-    elif args.clipping_mode == 'non-private':
-        throughputs,throughputs_t,comp_time = non_private_training_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
+    #if args.clipping_mode == 'non-private-virtual':
+    #    throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
+    #elif args.clipping_mode == 'non-private':
+    #    throughputs,throughputs_t,comp_time = non_private_training_clean(trainloader,testloader,params,model,args.epochs,args.phy_bs,args.lr)
     
     #elif args.clipping_mode == 'mini':
     #    throughputs,throughputs_t,comp_time,privacy_measures = private_training_mini_batch_clean(trainloader,testloader)
-    tloss,tacc,cor_eval,tot_eval = eval_model(testloader)
-    print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
-    print('compiling time',comp_time)
-    print('test loss',tloss)
-    print('test accuracy',tacc)
-    print('(',cor_eval,'/',tot_eval,')')
-    return np.mean(throughputs),np.mean(throughputs_t),comp_time,tacc
+    test_acc = eval_model(state,testloader)
+    #tloss,tacc,cor_eval,tot_eval = eval_model(testloader)
+    #print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
+    #print('compiling time',comp_time)
+    #print('test loss',tloss)
+    print('test accuracy',test_acc)
+    #print('(',cor_eval,'/',tot_eval,')')
+    return test_acc
+    #return np.mean(throughputs),np.mean(throughputs_t),comp_time,test_acc
 
 if __name__ == '__main__':
     
