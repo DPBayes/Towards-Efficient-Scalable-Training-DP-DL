@@ -540,7 +540,7 @@ class TrainerModule:
         expected_bs = len(trainloader.dataset)/len(trainloader)
         expected_acc_steps = expected_bs // self.physical_bs
         print('expected accumulation steps',expected_acc_steps)
-        acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
+        
         comp_time = 0
         gradient_step_ac = 0
         for epoch in range(1,self.epochs+1):
@@ -565,6 +565,8 @@ class TrainerModule:
             correct_batch = 0
             batch_idx = 0
 
+            acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
+
             #print('steps',steps,flush=True)
             with MyBatchMemoryManager(
                 data_loader=trainloader, 
@@ -577,7 +579,7 @@ class TrainerModule:
                     #print(batch[0][0].shape)
                     samples_used += len(batch[0])
                     sample_sizes.append(len(batch[0]))
-                    start_time = time.time()
+                    start_time = time.perf_counter()
                     grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
                     #print('num_clipped at',batch_idx,':',num_clipped)
                     acc_grads = jax.tree_util.tree_map(
@@ -599,7 +601,7 @@ class TrainerModule:
                         #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
-                    batch_time = time.time() - start_time
+                    batch_time = time.perf_counter() - start_time
 
                     train_loss += loss
                     total_batch += len(batch[1])
@@ -867,7 +869,6 @@ class TrainerModule:
         print('expected accumulation steps',expected_acc_steps,'len dataloader',len(trainloader),'expected_bs',expected_bs)
         _acc_update = lambda grad, acc : grad + acc / expected_acc_steps
 
-        acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
         comp_time = 0
         gradient_step_ac = 0
         for epoch in range(1,self.epochs+1):
@@ -892,6 +893,7 @@ class TrainerModule:
             batch_idx = 0
             
             times_up = 0
+            acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
             with MyBatchMemoryManager(
                 data_loader=trainloader, 
@@ -1061,7 +1063,7 @@ class TrainerModule:
         
         elif 'vit' in self.model_name:
             model_name = self.model_name
-            model = FlaxViTModel.from_pretrained(model_name)
+            model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
             module = model.module # Extract the Flax Module
             vars = {'params': model.params} # Extract the parameters
             config = module.config
