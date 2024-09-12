@@ -223,6 +223,7 @@ def eval_model(data_loader,model,params):
     correct_test = 0
     batch_idx = 0
     for batch_idx,batch in enumerate(data_loader):
+        print('eval',batch_idx)
         loss, acc,cor = eval_step_non(model,params,batch)
         test_loss += loss
         correct_test += cor
