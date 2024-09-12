@@ -185,7 +185,6 @@ def load_model(model_name,rng,dimension,num_classes):
         #model = model
         #params = params
         return model, params
-    
 
 def loss(params,model,batch):
     inputs,targets = batch
@@ -399,7 +398,7 @@ def non_private_training_mini_batch_clean(trainloader,testloader,epochs,physical
 def non_private_training_clean(trainloader,testloader,epochs,physical_bs,model,lr):
 
     #Training
-    print('Non private learning')
+    print('Non private learning',flush=True)
     
     #calculate_noise(len(trainloader))
     optimizer,opt_state = init_non_optimizer(lr,params)
@@ -518,8 +517,10 @@ def main(args):
     rng = jax.random.PRNGKey(args.seed)
     
     model,params = load_model(args.model,rng,args.dimension,args.ten)
-
+    print('evaluating model before training',flush=True)
     tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
+    print('Without trainig test loss',tloss)
+    print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')',flush=True)
     if args.clipping_mode == 'non-private-virtual':
         throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,args.epochs,args.phy_bs,model,args.lr)
     elif args.clipping_mode == 'non-private':
