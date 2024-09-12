@@ -417,8 +417,7 @@ def main(args):
     print('(',cor_eval,'/',tot_eval,')')
     return np.mean(throughputs),np.mean(throughputs_t),comp_time,tacc
 
-if __name__ == "main":
-    
+if __name__ == '__main__':
     
     parser = argparse.ArgumentParser(description='JAX ViT CIFAR Training')
     parser.add_argument('--lr', default=0.0005, type=float, help='learning rate')
