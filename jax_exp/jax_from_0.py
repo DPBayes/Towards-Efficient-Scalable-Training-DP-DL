@@ -517,13 +517,13 @@ def main(args):
     trainloader = privatize_dataloader(trainloader)
     rng = jax.random.PRNGKey(args.seed)
     
-    model,params = load_model(args.model,rng,args.dimension,args.num_classes)
+    model,params = load_model(args.model,rng,args.dimension,args.ten)
 
     tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
     if args.clipping_mode == 'non-private-virtual':
-        throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,args.epochs,args.physical_bs,model,args.lr)
+        throughputs,throughputs_t,comp_time = non_private_training_mini_batch_clean(trainloader,testloader,args.epochs,args.phy_bs,model,args.lr)
     elif args.clipping_mode == 'non-private':
-        throughputs,throughputs_t,comp_time = non_private_training_clean(trainloader,testloader,args.epochs,args.physical_bs,model,args.lr)
+        throughputs,throughputs_t,comp_time = non_private_training_clean(trainloader,testloader,args.epochs,args.phy_bs,model,args.lr)
     
     #elif args.clipping_mode == 'mini':
     #    throughputs,throughputs_t,comp_time,privacy_measures = private_training_mini_batch_clean(trainloader,testloader)
