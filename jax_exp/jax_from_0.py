@@ -517,7 +517,7 @@ def main(args):
     trainloader = privatize_dataloader(trainloader)
     rng = jax.random.PRNGKey(args.seed)
     
-    model,params = load_model(args.model_name,rng,args.dimension,args.num_classes)
+    model,params = load_model(args.model,rng,args.dimension,args.num_classes)
 
     tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
     if args.clipping_mode == 'non-private-virtual':
