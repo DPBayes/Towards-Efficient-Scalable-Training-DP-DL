@@ -251,6 +251,7 @@ def train_epoch(state,data_loader):
         state, loss, accuracy = train_step(state, (inputs,targets))
         train_loss += loss
         train_acc += accuracy
+        print('batch idx',batch_idx,train_loss/len(batch[0]),train_acc/len(batch[0]))
     return state, (train_loss/batch_idx,train_acc/batch_idx)
 
 @jit
@@ -258,8 +259,8 @@ def eval_step(state,batch):
     inputs,targets = batch
     logits = state.apply_fn({'params':state.params},inputs)
     predicted_class = jnp.argmax(logits,axis=-1)
-    cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
-    cross_loss = jnp.mean(cross_losses)
+    #cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
+    #cross_loss = jnp.mean(cross_losses)
     vals = predicted_class == targets
     return jnp.mean(vals)
 
