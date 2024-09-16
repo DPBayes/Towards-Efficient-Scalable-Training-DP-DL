@@ -280,6 +280,7 @@ def eval_model(state,data_loader):
     accs = []
     batch_idx = 0
     for batch_idx,batch in enumerate(data_loader):
+        print('test loader batch idx',batch_idx,flush=True)
         acc = eval_step(state,batch)
         accs.append(acc)
         del batch
