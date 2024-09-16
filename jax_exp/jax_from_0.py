@@ -234,7 +234,7 @@ def eval_step_non(model,params, batch):
 def train_step(state,batch):
     def loss_fn(params):
         inputs,targets = batch
-        logits  = state.apply_fn(inputs,params = state.params,train=True)[0]
+        logits  = state.apply_fn(inputs,params = params,train=True)[0]
         predicted_class = jnp.argmax(logits,axis=-1)
 
         cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
@@ -249,9 +249,9 @@ def train_step(state,batch):
 
 def train_epoch(state,data_loader):
 
-    def body_fn(state, batch):
-        new_state, loss, accuracy = train_step(state, batch)
-        return new_state, (loss, accuracy)
+    #def body_fn(state, batch):
+    #    new_state, loss, accuracy = train_step(state, batch)
+    #    return new_state, (loss, accuracy)
     
     batch_idx = 0
     train_loss = 0
@@ -262,9 +262,11 @@ def train_epoch(state,data_loader):
         train_loss += loss
         train_acc += accuracy
         print('batch idx',batch_idx,train_loss/len(batch[0]),train_acc/len(batch[0]))
-    return state, (train_loss/batch_idx,train_acc/batch_idx)
+    
 
-#@jit
+    return state, (train_loss/len(data_loader),train_acc//len(data_loader))
+
+@jit
 def eval_step(state,batch):
     inputs,targets = batch
     outputs = state.apply_fn(inputs,params = state.params,train=True)[0]
@@ -277,14 +279,14 @@ def eval_step(state,batch):
 
 def eval_model(state,data_loader):
     # Test model on all images of a data loader and return avg loss
-    accs = []
+    accuracies = 0
     batch_idx = 0
     for batch_idx,batch in enumerate(data_loader):
-        print('test loader batch idx',batch_idx,flush=True)
+        #print('test loader batch idx',batch_idx,flush=True)
         acc = eval_step(state,batch)
-        accs.append(acc)
+        accuracies += acc
         del batch
-    eval_acc = jnp.mean(jnp.array(accs))
+    eval_acc = accuracies/len(data_loader)
     return eval_acc
 
 def init_non_optimizer(lr,params):
