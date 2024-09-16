@@ -137,7 +137,7 @@ class TrainerModule:
 
         #self.create_functions()
         self.state = None
-        self.load_model()
+        self.rng = self.load_model()
         print(self.model_name,self.num_classes,self.target_epsilon,'acc steps',self.acc_steps)
 
     def compute_epsilon(self,steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
@@ -1332,52 +1332,34 @@ class TrainerModule:
         
         elif 'vit' in self.model_name:
             model_name = self.model_name
-            model = FlaxViTForImageClassification.from_pretrained(model_name)
-            # Reinitialize the classification head
-            model.config.num_labels = self.num_classes
-            model = FlaxViTForImageClassification(model.config)
-            #model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
+            #model = FlaxViTForImageClassification.from_pretrained(model_name)
+            model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
+            module = model.module # Extract the Flax Module
+            vars = {'params': model.params} # Extract the parameters
+            #config = module.config
+            model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
 
-            # Create a function to initialize model params
-            def init_model(rng):
-                input_shape = (1,3,self.dimension,self.dimension)
-                x = jax.random.normal(params_key, input_shape)
-                #input_data = jnp.zeros(input_shape, dtype=jnp.float32)
-                params = model.init_weights(rng, x)['params']
-                return params
+            input_shape = (1,3,self.dimension,self.dimension)
+            #But then, we need to split it in order to get random numbers
             
-            # Initialize the model
-            params = init_model(params_key)
+
+            #The init function needs an example of the correct dimensions, to infer the dimensions.
+            #They are not explicitly writen in the module, instead, the model infer them with the first example.
+            x = jax.random.normal(params_key, input_shape)
+
+            main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
+            #Initialize the model
+            variables = model.init({'params':init_rng},x)
+
+            #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
+            params = variables['params']
+            params['vit'] = vars['params']
+            params = unfreeze(params)
+            #self.print_param_shapes(params)
+            #print(params)
+            model.apply({'params':params},x)
             self.model = model
-            self.params = unfreeze(params)
-
-
-            # module = model.module # Extract the Flax Module
-            # vars = {'params': model.params} # Extract the parameters
-            # config = module.config
-            # #model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
-
-            # input_shape = (1,3,self.dimension,self.dimension)
-            # #But then, we need to split it in order to get random numbers
-            
-
-            # #The init function needs an example of the correct dimensions, to infer the dimensions.
-            # #They are not explicitly writen in the module, instead, the model infer them with the first example.
-            # x = jax.random.normal(params_key, input_shape)
-
-            # main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-            # #Initialize the model
-            # variables = model.init({'params':init_rng},x)
-
-            # #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
-            # params = variables['params']
-            # params['vit'] = vars['params']
-            # params = unfreeze(params)
-            # self.print_param_shapes(params)
-            # #print(params)
-            # model.apply({'params':params},x)
-            # self.model = model
-            # self.params = params
+            self.params = params
 
         else:
             crop_size = self.dimension
@@ -1416,7 +1398,9 @@ class TrainerModule:
         print('finish loading',flush=True)
         print('model loaded')
         print(jax.tree_util.tree_map(jnp.shape, self.params))
-    
+        self.print_param_shapes(params)
+        return main_rng
+        
     def __str__(self) -> str:
         return f"Trainer with seed: {self.seed} and model"
     
