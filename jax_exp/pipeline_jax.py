@@ -746,9 +746,7 @@ class TrainerModule:
                 self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
                 
                 gradient_step_ac += 1
-                print('batch_idx',batch_idx)
-                #print('flag queue',flag.skip_queue)
-                print('count',gradient_step_ac)
+                print('batch idx',batch_idx,'with size',len(batch[0]))
                 #self.print_param_change(old_params,self.params)
                 #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
@@ -1186,7 +1184,7 @@ class TrainerModule:
             for batch_idx, batch in enumerate(trainloader): 
                 #with self.collector(tag='batch'):
                 samples_used += len(batch[0])
-                #print(samples_used)
+                print('batch idx',batch_idx,'with size',len(batch[0]))
                 start_time = time.perf_counter()
                 grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                 acc_grads = jax.tree_util.tree_map(
