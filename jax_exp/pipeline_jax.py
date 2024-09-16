@@ -693,7 +693,7 @@ class TrainerModule:
         #Training
         print('private learning',flush=True)
         
-        _acc_update = lambda grad, acc : grad + acc
+        #_acc_update = lambda grad, acc : grad + acc
 
         self.calculate_noise(len(trainloader))
         #self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
@@ -1526,7 +1526,7 @@ def main(args):
         throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_clean(trainloader,testloader)
         print(privacy_measures)
     elif args.clipping_mode == 'private':
-        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_clean(trainloader,testloader)
+        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_clean(trainloader,testloader)
         print(privacy_measures)
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
