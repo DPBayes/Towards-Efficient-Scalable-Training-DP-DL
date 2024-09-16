@@ -31,7 +31,7 @@ import jax.profiler
 import flax.linen as nn
 #from flax import jax_utils
 #from flax.training import train_state
-#from flax.core.frozen_dict import freeze,FrozenDict
+from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
 
 #Optimizer library for JAX. From it we got the dpsgd optimizer
 import optax
@@ -49,7 +49,7 @@ import torch.backends.cudnn
 
 #Import the modules of the models. For the ResNet models, they came from the private_resnet file
 #from private_resnet import FlaxResNetModelClassifier,ResNetModelHeadModule
-from transformers import FlaxViTModel
+from transformers import FlaxViTModel,FlaxViTForImageClassification
 from private_vit import ViTModelHead
 from functools import partial
 
@@ -1332,32 +1332,52 @@ class TrainerModule:
         
         elif 'vit' in self.model_name:
             model_name = self.model_name
-            model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
-            module = model.module # Extract the Flax Module
-            vars = {'params': model.params} # Extract the parameters
-            config = module.config
-            model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
+            model = FlaxViTForImageClassification.from_pretrained(model_name)
+            # Reinitialize the classification head
+            model.config.num_labels = self.num_classes
+            model = FlaxViTForImageClassification(model.config)
+            #model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
 
-            input_shape = (1,3,self.dimension,self.dimension)
-            #But then, we need to split it in order to get random numbers
+            # Create a function to initialize model params
+            def init_model(rng):
+                input_shape = (1,3,self.dimension,self.dimension)
+                x = jax.random.normal(params_key, input_shape)
+                #input_data = jnp.zeros(input_shape, dtype=jnp.float32)
+                params = model.init_weights(rng, x)['params']
+                return params
+            
+            # Initialize the model
+            params = init_model(params_key)
+            self.model = model
+            self.params = unfreeze(params)
+
+
+            # module = model.module # Extract the Flax Module
+            # vars = {'params': model.params} # Extract the parameters
+            # config = module.config
+            # #model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
+
+            # input_shape = (1,3,self.dimension,self.dimension)
+            # #But then, we need to split it in order to get random numbers
             
 
-            #The init function needs an example of the correct dimensions, to infer the dimensions.
-            #They are not explicitly writen in the module, instead, the model infer them with the first example.
-            x = jax.random.normal(params_key, input_shape)
+            # #The init function needs an example of the correct dimensions, to infer the dimensions.
+            # #They are not explicitly writen in the module, instead, the model infer them with the first example.
+            # x = jax.random.normal(params_key, input_shape)
 
-            main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-            #Initialize the model
-            variables = model.init({'params':init_rng},x)
+            # main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
+            # #Initialize the model
+            # variables = model.init({'params':init_rng},x)
 
-            #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
-            params = variables['params']
-            params['vit'] = vars['params']
-            self.print_param_shapes(params)
-            #print(params)
-            model.apply({'params':params},x)
-            self.model = model
-            self.params = params
+            # #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
+            # params = variables['params']
+            # params['vit'] = vars['params']
+            # params = unfreeze(params)
+            # self.print_param_shapes(params)
+            # #print(params)
+            # model.apply({'params':params},x)
+            # self.model = model
+            # self.params = params
 
         else:
             crop_size = self.dimension
