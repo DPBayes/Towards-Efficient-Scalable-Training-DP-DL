@@ -687,6 +687,157 @@ class TrainerModule:
         print('privacy results',privacy_results,flush=True)
         print('Finish training',flush=True)
         return throughputs,throughputs_t,comp_time,privacy_results
+
+    def private_training_clean(self,trainloader,testloader):
+
+        #Training
+        print('private learning',flush=True)
+        
+        _acc_update = lambda grad, acc : grad + acc
+
+        self.calculate_noise(len(trainloader))
+        #self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
+        self.init_non_optimizer()
+        #print('noise multiplier',self.noise_multiplier)
+        throughputs = np.zeros(self.epochs)
+        throughputs_t = np.zeros(self.epochs)
+        expected_bs = len(trainloader.dataset)/len(trainloader)
+        expected_acc_steps = expected_bs // self.physical_bs
+        print('expected accumulation steps',expected_acc_steps)
+        
+        comp_time = 0
+        gradient_step_ac = 0
+        for epoch in range(1,self.epochs+1):
+            flag = EndingLogicalBatchSignal()
+            batch_idx = 0
+            metrics = {}
+            metrics['loss'] = np.array([])
+            metrics['acc'] = np.array([])
+            
+            total_time_epoch = 0
+            samples_used = 0 
+            start_time_epoch = time.time()
+            batch_times = []
+            sample_sizes = []
+
+            steps = int(epoch * expected_acc_steps)
+            
+            train_loss = 0
+            correct = 0
+            total = 0
+            total_batch = 0
+            correct_batch = 0
+            batch_idx = 0
+
+            #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
+
+            for batch_idx, batch in enumerate(trainloader): 
+
+                samples_used += len(batch[0])
+                sample_sizes.append(len(batch[0]))
+                start_time = time.perf_counter()
+                grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
+
+                    
+                updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,len(batch[0]),self.rng,grads)
+
+                #old_params = self.params
+                #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
+                self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
+                
+                gradient_step_ac += 1
+                print('batch_idx',batch_idx)
+                #print('flag queue',flag.skip_queue)
+                print('count',gradient_step_ac)
+                #self.print_param_change(old_params,self.params)
+                #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
+
+                batch_time = time.perf_counter() - start_time
+
+                train_loss += loss
+                total_batch += len(batch[1])
+                correct_batch += cor
+                metrics['loss'] = jnp.append(metrics['loss'],float(loss))
+                metrics['acc'] = jnp.append(metrics['acc'],(float(accu)))
+
+                batch_times.append(batch_time)
+                total_time_epoch += batch_time
+
+                if batch_idx % 100 == 99 or ((batch_idx + 1) == len(trainloader)):
+                    
+                    avg_loss = float(jnp.mean(metrics['loss']))
+                    avg_acc = float(jnp.mean(metrics['acc']))
+                    total += total_batch
+                    correct += correct_batch
+                    
+                    print('(New)Accuracy values',100.*(correct_batch/total_batch))
+                    print('(New)Loss values',train_loss)
+                    #avg_acc = 100.*(correct/total)
+                    #avg_loss = train_loss/total
+                    print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
+                    print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
+
+                    metrics['loss'] = np.array([])
+                    metrics['acc'] = np.array([])
+                    
+                    total_batch = 0
+                    correct_batch = 0
+                    
+                    eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+                    #eval_loss, eval_acc = self.eval_model(testloader)
+                    print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
+
+            print('-------------End Epoch---------------',flush=True)
+            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
+            print('steps',steps,'gradient acc steps',gradient_step_ac,flush=True)
+            print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
+
+            if epoch == 1:
+                print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
+
+            epoch_time = time.time() - start_time_epoch
+            eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
+            #eval_loss, eval_acc = self.eval_model(testloader)
+            print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
+
+            epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
+            
+            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+            #add_scalar_dict(self.logger,'train_epoch_privacy',privacy_results,global_step=epoch)
+            print('privacy results',privacy_results)
+
+            throughput_t = (samples_used)/epoch_time
+            throughput = (samples_used)/total_time_epoch
+            print('total time epoch - epoch time',np.abs(total_time_epoch - epoch_time),'total time epoch',total_time_epoch,'epoch time',epoch_time)
+            init_v = sample_sizes[0]
+            for i in range(len(sample_sizes)):
+                if sample_sizes[i] != init_v:
+                    if i != 0:
+                        print('before',sample_sizes[i-1],batch_times[i-1])
+                    print('after',sample_sizes[i],batch_times[i])
+                    init_v = sample_sizes[i]
+            print('End of Epoch ', ' number of batches ',len(sample_sizes),np.column_stack((sample_sizes,batch_times)))
+
+            if epoch == 1:
+                throughput_wout_comp = (samples_used - self.physical_bs)/(total_time_epoch - batch_times[0])
+                throughput_wout_t_comp = (samples_used - self.physical_bs)/(epoch_time - batch_times[0])
+                #print('throughput',throughput,'throughput minus the first time',throughput_wout_comp)
+                throughput = throughput_wout_comp
+                throughput_t = throughput_wout_t_comp
+            throughputs[epoch-1] = throughput
+            throughputs_t[epoch-1] = throughput_t
+            if epoch == 1:
+                comp_time = batch_times[0]
+            print('Epoch {} Total time {} Throughput {} Samples Used {}'.format(epoch,total_time_epoch,throughput,samples_used),flush=True)  
+        
+        
+        epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
+        
+        privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+        print('privacy results',privacy_results,flush=True)
+        print('Finish training',flush=True)
+        return throughputs,throughputs_t,comp_time,privacy_results
     
 
     def non_private_training_mini_batch_2(self,trainloader,testloader):
@@ -1371,8 +1522,12 @@ def main(args):
         throughputs,throughputs_t,comp_time = trainer.non_private_training_clean(trainloader,testloader)
     elif args.clipping_mode == 'non-private-virtual':
         throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch_clean(trainloader,testloader)
-    elif args.clipping_mode == 'mini':
+    elif args.clipping_mode == 'private-mini':
         throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_clean(trainloader,testloader)
+        print(privacy_measures)
+    elif args.clipping_mode == 'private':
+        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_clean(trainloader,testloader)
+        print(privacy_measures)
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
     print('compiling time',comp_time)
