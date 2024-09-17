@@ -456,6 +456,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
     loss = None
     times_up = 0
     acc = 0 
+    actual_batch_size = 0
     print('Epoch',epoch,'physical batch size',physical_batch,'expected_acc',expected_acc_steps,flush=True)
     with MyBatchMemoryManager(
         data_loader=loader, 
@@ -466,6 +467,7 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
             starter_t, ender_t = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
             starter_t.record()
             size_b = len(inputs)
+            actual_batch_size += len(inputs)
             #print('Batch size of ',size_b)
             samples_used += size_b
             inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
@@ -477,14 +479,19 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
                 start_time = time.perf_counter()
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
-                loss = loss / expected_acc_steps
-                loss.backward()
-                acc += 1
                 if not flag._check_skip_next_step():
+                    loss = loss / actual_batch_size
+                    loss.backward()
+                    acc += 1
                     print('take step batch idx: ',batch_idx+1,flush=True)
                     optimizer.step()
                     optimizer.zero_grad()
                     times_up += 1
+                    actual_batch_size = 0
+                else:
+                    loss = loss 
+                    loss.backward()
+                    acc += 1
                 
                 ender.record() #type: ignore
                 torch.cuda.synchronize()
