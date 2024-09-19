@@ -471,54 +471,53 @@ def train_non_private_2(device,model,lib,loader,optimizer,criterion,epoch,physic
             #print('Batch size of ',size_b)
             samples_used += size_b
             inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
-            with torch.set_grad_enabled(True):
+            torch.set_grad_enabled(True)
 
-                #Measure time, after loading data to the GPU
-                starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
-                starter.record()  # type: ignore
-                start_time = time.perf_counter()
-                outputs = model(inputs)
-                loss = criterion(outputs, targets)
-                if not flag._check_skip_next_step():
-                    loss = loss / actual_batch_size
-                    loss.backward()
-                    acc += 1
-                    print('take step batch idx: ',batch_idx+1,flush=True)
-                    optimizer.step()
-                    optimizer.zero_grad()
-                    times_up += 1
-                    actual_batch_size = 0
-                else:
-                    loss = loss 
-                    loss.backward()
-                    acc += 1
-                
-                ender.record() #type: ignore
-                torch.cuda.synchronize()
-                end_time = time.perf_counter()
-        
-                total_time_perf = (end_time - start_time)
+            #Measure time, after loading data to the GPU
+            starter, ender = torch.cuda.Event(enable_timing=True),   torch.cuda.Event(enable_timing=True)
+            starter.record()  # type: ignore
+            start_time = time.perf_counter()
+            outputs = model(inputs)
+            loss = criterion(outputs, targets)
+            if not flag._check_skip_next_step():
+                loss = loss / actual_batch_size
+                loss.backward()
+                acc += 1
+                print('take step batch idx: ',batch_idx+1,flush=True)
+                optimizer.step()
+                optimizer.zero_grad()
+                times_up += 1
+                actual_batch_size = 0
+            else:
+                loss.backward()
+                acc += 1
+            
+            ender.record() #type: ignore
+            torch.cuda.synchronize()
+            end_time = time.perf_counter()
+    
+            total_time_perf = (end_time - start_time)
 
-                curr_time = starter.elapsed_time(ender)/1000
-                #total_time_epoch += curr_time
-                total_time_epoch += total_time_perf
-                batch_loss += loss.item()
-                train_loss += loss.item()
-                _, predicted = outputs.max(1)
-                del outputs,inputs
-                total_batch += targets.size(0)
-                correct_batch += predicted.eq(targets).sum().item()
-                if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                    print('samples_used',samples_used,'batch_idx',batch_idx,flush=True)
-                    print('Epoch: ', epoch, 'Batch: ',batch_idx,'total_batch',total_batch,flush=True)
-                    print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                                % (batch_loss/(acc), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
-                    total += total_batch
-                    correct += correct_batch
-                    total_batch = 0
-                    correct_batch = 0
-                    batch_loss = 0
-                    acc = 0
+            curr_time = starter.elapsed_time(ender)/1000
+            #total_time_epoch += curr_time
+            total_time_epoch += total_time_perf
+            batch_loss += loss.item()
+            train_loss += loss.item()
+            _, predicted = outputs.max(1)
+            del outputs,inputs
+            total_batch += targets.size(0)
+            correct_batch += predicted.eq(targets).sum().item()
+            if  (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(memory_safe_data_loader)):
+                print('samples_used',samples_used,'batch_idx',batch_idx,flush=True)
+                print('Epoch: ', epoch, 'Batch: ',batch_idx,'total_batch',total_batch,flush=True)
+                print('Epoch: ', epoch, 'Batch: ',batch_idx, 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                            % (batch_loss/(acc), 100.*correct_batch/total_batch, correct_batch, total_batch),flush=True)
+                total += total_batch
+                correct += correct_batch
+                total_batch = 0
+                correct_batch = 0
+                batch_loss = 0
+                acc = 0
                 
         ender_t.record() #type: ignore
         torch.cuda.synchronize()
@@ -992,7 +991,7 @@ def main_non_distributed(args):
 
     err = None
 
-    row = [args.model,args.clipping_mode,args.normalization,args.epochs,args.phy_bs,err,thr,t_th,acc,args.epsilon]
+    row = [args.model,args.clipping_mode,args.normalization,args.epochs,args.phy_bs,args.lr,err,thr,t_th,acc,args.epsilon]
 
     path_log = args.file+ ".csv"
 
@@ -1002,6 +1001,6 @@ def main_non_distributed(args):
         writer = csv.writer(f, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
         if not exists:
-            writer.writerow(["model", "clipping_mode","normalization","epochs", "physical_batch", "fail",'throughput','total_throughput','acc_test',"epsilon"])
+            writer.writerow(["model", "clipping_mode","normalization","epochs", "physical_batch", "lr","fail",'throughput','total_throughput','acc_test',"epsilon"])
 
         writer.writerow(row)
