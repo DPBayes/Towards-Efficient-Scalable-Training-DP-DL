@@ -337,8 +337,8 @@ class TrainerModule:
 
         return updates, new_key
     
-    @jax.jit
-    def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C,expected_bs):
+    @partial(jit,static_argnums=0)
+    def noise_addition(self,rng_key, accumulated_clipped_grads, noise_std, C,expected_bs):
         num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
         treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
         new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
