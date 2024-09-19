@@ -245,7 +245,6 @@ class TrainerModule:
     
     def loss(self,params,batch):
         inputs,targets = batch
-        print('inputs shape in loss',inputs.shape)
         logits = self.model.apply({'params':params},inputs)
         predicted_class = jnp.argmax(logits,axis=-1)
 
@@ -485,10 +484,22 @@ class TrainerModule:
     
     def private_iteration_v2(self,logical_batch,params,opt_state,k,q,t,max_lb_size,noise_std,C):
         sampling_rng = jax.random.PRNGKey(t + 1)
-        batch_rng, binomial_rng = jax.random.split(sampling_rng, 2)
-        physical_batches = jnp.array(jnp.split(logical_batch[0], k)) # k x pbs x dim
-        physical_labels = jnp.array(jnp.split(logical_batch[1], k))
-        actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(len(logical_batch),), p=q).sum()
+        batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
+
+        x,y = logical_batch
+
+        diff = len(y) % k
+
+        if diff > 0:
+
+            x = jnp.pad(x, ((0, k - diff), (0, 0), (0, 0), (0, 0)), mode='constant')
+            y = jnp.pad(y, ((0, k - diff)), mode='constant')
+            print('new shape',x.shape,y.shape)
+        
+        batch_size = len(x)
+        physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
+        physical_labels = jnp.array(jnp.split(y, k))
+        actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(batch_size,), p=q).sum()
         masks = jnp.ones(max_lb_size)
         n_masked_elements = max_lb_size - actual_batch_size
         masks = masks.at[-n_masked_elements].set(0)
@@ -523,7 +534,9 @@ class TrainerModule:
             for batch_idx,batch in enumerate(train_loader): #logical
                 self.params,self.opt_state =self.private_iteration_v2(batch,self.params,self.opt_state,k,q,batch_idx,max_lb_size,noise_std,C)
                 _,acc,_,_ = self.eval_model(test_loader)
-                print('end epoch',epoch,'acc',acc)
+                print('end batch ',batch_idx,'acc',acc)
+            _,acc,_,_ = self.eval_model(test_loader)
+            print('end epoch',epoch,'acc',acc)
         return self.eval_model(test_loader)
 
 
