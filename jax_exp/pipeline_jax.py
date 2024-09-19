@@ -296,9 +296,9 @@ class TrainerModule:
 
     @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
-        updates,opt_state = self.optimizer.update(grads,opt_state,params)
-        params = optax.apply_updates(params,updates)
-        return params,opt_state
+        updates,new_opt_state = self.optimizer.update(grads,opt_state,params)
+        new_params = optax.apply_updates(params,updates)
+        return new_params,new_opt_state
     
     @partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
@@ -394,7 +394,7 @@ class TrainerModule:
                             
                             updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,expected_bs,self.rng,acc_grads)
 
-                            old_params = self.params
+                            #old_params = self.params
                             #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                             self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
                             
@@ -1010,6 +1010,8 @@ class TrainerModule:
         
         #self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
+        print('self optimizer',self.optimizer)
+        print('self opt state',self.opt_state)
         #print('noise multiplier',self.noise_multiplier)
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
@@ -1150,6 +1152,8 @@ class TrainerModule:
         
         #self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
+        print('self optimizer',self.optimizer)
+        print('self opt state',self.opt_state)
         #print('noise multiplier',self.noise_multiplier)
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
