@@ -394,20 +394,45 @@ class TrainerModule:
             params,opt_state = self.grad_acc_update(accumulated_gradients,opt_state,params)
             del x,y,physical_batches,physical_labels
         return params,opt_state
-    
-    @partial(jit, static_argnums=0)
-    def process_a_physical_batch(self,mu,physical_batch, mask,C):
-        foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
-        (loss_val,(acc,cor)), px_grads = jax.vmap(foo)(physical_batch)
+
+
+    @partial(jit,static_argnums=0)
+    def process_a_physical_batch(self,params,physical_batch, mask,C):
+        physical_batch = jax.tree_map(lambda x: x[:, None], physical_batch)
+
+        (loss_val,(acc,cor)), px_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True,argnums=0),in_axes=(None,0))(params,physical_batch)
 
         def clip_mask_and_sum(x, mask, clipping_multiplier):
-            return (mask * clipping_multiplier) @ x
 
-        px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x, axis=-1)**2, px_grads)
+            new_shape = (-1,) + (1,) * (x.ndim - 1)
+            mask = mask.reshape(new_shape)
+            clipping_multiplier = clipping_multiplier.reshape(new_shape)
+
+            return jnp.sum(x * mask * clipping_multiplier, axis=0)
+        
+        px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1)**2, px_grads)
         flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
+
         px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
+        
         clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
-        return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
+        
+        return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads),jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor)
+
+        
+    # @partial(jit, static_argnums=0)
+    # def process_a_physical_batch(self,mu,physical_batch, mask,C):
+    #     foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
+    #     (loss_val,(acc,cor)), px_grads = jax.vmap(foo)(physical_batch)
+
+    #     def clip_mask_and_sum(x, mask, clipping_multiplier):
+    #         return (mask * clipping_multiplier) @ x
+
+    #     px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x, axis=-1)**2, px_grads)
+    #     flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
+    #     px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
+    #     clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
+    #     return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
     
     @partial(jit, static_argnums=0)
     def process_a_physical_batch2(self,mu,physical_batch,physical_y, mask,C):
@@ -423,11 +448,13 @@ class TrainerModule:
 
         px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x, axis=-1)**2, px_grads)
         flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
-        print(len(flattened_px_per_param_sq_norms[0].shape),len(flattened_px_per_param_sq_norms[-1].shape),type(flattened_px_per_param_sq_norms))
+        print(len(flattened_px_per_param_sq_norms),len(flattened_px_per_param_sq_norms[-1].shape),type(flattened_px_per_param_sq_norms))
         #global_grad_norms = jax.vmap(linear_algebra.global_norm)(flattened_px_per_param_sq_norms)
         #jnp.sqrt(sum(jnp.sum(numerics.abs_sq(x)) for x in jax.tree_util.tree_leaves(updates)))
         #sum_params = jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0)
-        px_grad_norms = jnp.sqrt([jnp.sum(x,axis=0) for x in flattened_px_per_param_sq_norms])
+        sum_params = [jnp.sum(x,axis=0) for x in flattened_px_per_param_sq_norms]
+        print(sum_params)
+        px_grad_norms = jnp.sqrt(sum_params)
         #px_grad_norms = jnp.sqrt(sum_params)
         #px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
         clipping_multiplier = jnp.minimum(1., C/px_grad_norms)
@@ -471,7 +498,7 @@ class TrainerModule:
         ### gradient accumulation
         accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
         for pb,yb, mask in zip(physical_batches,physical_labels, masks):
-            sum_of_clipped_grads_from_pb = self.process_a_physical_batch(params,(pb,yb),mask,C)
+            sum_of_clipped_grads_from_pb,_,_,_ = self.process_a_physical_batch(params,(pb,yb),mask,C)
             accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                     accumulated_clipped_grads, 
                                                     sum_of_clipped_grads_from_pb
@@ -851,8 +878,6 @@ def main(args):
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
     trainer.init_non_optimizer()
     
-
-
     if args.clipping_mode == 'non-private':
         vals = trainer.train_epochs(trainloader,testloader)
     elif args.clipping_mode == 'v1':
