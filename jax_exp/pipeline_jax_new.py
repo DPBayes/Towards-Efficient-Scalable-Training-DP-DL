@@ -257,9 +257,9 @@ class TrainerModule:
         return cross_loss,(acc,cor)
 
     @partial(jit,static_argnums=0)
-    def loss_eval(self,params,batch):
+    def loss_eval(self,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':params},inputs)
+        logits = self.model.apply({'params':self.params},inputs)
         #print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
@@ -273,10 +273,10 @@ class TrainerModule:
         return cross_loss,acc,cor
     
     @partial(jit,static_argnums=0)
-    def eval_step_non(self, params, batch):
+    def eval_step_non(self, batch):
         # Return the accuracy for a single batch
         #batch = jax.tree_map(lambda x: x[:, None], batch)
-        loss,acc,cor =self.loss_eval(params,batch)
+        loss,acc,cor =self.loss_eval(batch)
         #loss, acc= self.loss_2(self.params, batch)
         return loss, acc,cor
     
@@ -487,8 +487,8 @@ class TrainerModule:
 
         if diff > 0:
 
-            x = jnp.pad(x, ((0, k-diff), (0, 0), (0, 0), (0, 0)), mode='constant')
-            y = jnp.pad(y, ((0, k-diff)), mode='constant')
+            x = jnp.pad(x, ((0, max_lb_size-len(y)), (0, 0), (0, 0), (0, 0)), mode='constant')
+            y = jnp.pad(y, ((0, max_lb_size-len(y))), mode='constant')
             #k-diff
             print('new shape',x.shape,y.shape)
         
@@ -506,6 +506,8 @@ class TrainerModule:
         ### gradient accumulation
         accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
         for pb,yb, mask in zip(physical_batches,physical_labels, masks):
+
+            print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
             sum_of_clipped_grads_from_pb,_,_,_ = self.process_a_physical_batch(params,(pb,yb),mask,C)
             accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                     accumulated_clipped_grads, 
@@ -618,7 +620,7 @@ class TrainerModule:
         correct_test = 0
         batch_idx = 0
         for batch_idx,batch in enumerate(data_loader):
-            loss, acc,cor = self.eval_step_non(self.params,batch)
+            loss, acc,cor = self.eval_step_non(batch)
             test_loss += loss
             correct_test += cor
             total_test += len(batch[1])
