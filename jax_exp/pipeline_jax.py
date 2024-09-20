@@ -1296,13 +1296,8 @@ class TrainerModule:
             else:
                 print(f"{prefix}{key}: {value.shape}")
 
-    def print_param_values(self,params, prefix=''):
-        for key, value in params.items():
-            if isinstance(value, dict):
-                print(f"{prefix}{key}:")
-                self.print_param_shapes(value, prefix + '  ')
-            else:
-                print(f"{prefix}{key}: {value}")
+    def print_param_values(self,params):
+        jax.tree_util.tree_map(lambda x: print(f"Shape: {x.shape}, Values: {x}"), params)
       
     def load_model(self):
         print('load model name',self.model_name,flush=True)
