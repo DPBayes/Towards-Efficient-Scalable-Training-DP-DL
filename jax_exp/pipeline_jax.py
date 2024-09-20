@@ -1295,6 +1295,14 @@ class TrainerModule:
                 self.print_param_shapes(value, prefix + '  ')
             else:
                 print(f"{prefix}{key}: {value.shape}")
+
+    def print_param_values(self,params, prefix=''):
+        for key, value in params.items():
+            if isinstance(value, dict):
+                print(f"{prefix}{key}:")
+                self.print_param_shapes(value, prefix + '  ')
+            else:
+                print(f"{prefix}{key}: {value}")
       
     def load_model(self):
         print('load model name',self.model_name,flush=True)
@@ -1403,6 +1411,7 @@ class TrainerModule:
         print('model loaded')
         print(jax.tree_util.tree_map(jnp.shape, self.params))
         self.print_param_shapes(params)
+        self.print_param_values(params)
         return main_rng
         
     def __str__(self) -> str:
@@ -1524,6 +1533,7 @@ def main(args):
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
+    
     if args.clipping_mode == 'non-private':
         throughputs,throughputs_t,comp_time = trainer.non_private_training_clean(trainloader,testloader)
     elif args.clipping_mode == 'non-private-virtual':
