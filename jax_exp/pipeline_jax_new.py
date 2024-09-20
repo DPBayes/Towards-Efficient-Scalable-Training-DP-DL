@@ -136,10 +136,10 @@ class TrainerModule:
 
         timestamp = datetime.now().strftime('%Y%m%d%M')
         print('model at time: ',timestamp,flush=True)
-        self.logger = SummaryWriter('runs_{}/{}_{}_cifar_{}_epsilon_{}_model_{}_{}_{}'.format(target_epsilon,test,clipping_mode,num_classes,target_epsilon,model_name,timestamp,epochs),flush_secs=30)
-        self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
-                                            root_pids={os.getpid()},
-                                            interval=1.0)
+        #self.logger = SummaryWriter('runs_{}/{}_{}_cifar_{}_epsilon_{}_model_{}_{}_{}'.format(target_epsilon,test,clipping_mode,num_classes,target_epsilon,model_name,timestamp,epochs),flush_secs=30)
+        #self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
+        #                                    root_pids={os.getpid()},
+        #                                    interval=1.0)
         
 
         #self.create_functions()
@@ -256,28 +256,23 @@ class TrainerModule:
 
         return cross_loss,(acc,cor)
 
+    @partial(jit,static_argnums=0)
     def loss_eval(self,params,batch):
         inputs,targets = batch
         logits = self.model.apply({'params':params},inputs)
         #print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
-        #print('cross_losses:',cross_losses.shape)
-        
 
         cross_loss = jnp.mean(cross_losses)
         #vals = (predicted_class > 0.5) == (targets > 0.5) 
         vals = predicted_class == targets
         acc = jnp.mean(vals)
         cor = jnp.sum(vals)
-        #print('targets',targets)
-        #print('predicted class',predicted_class)
-
-        #jax.debug.breakpoint()
 
         return cross_loss,acc,cor
     
-    #@partial(jit,static_argnums=0)
+    @partial(jit,static_argnums=0)
     def eval_step_non(self, params, batch):
         # Return the accuracy for a single batch
         #batch = jax.tree_map(lambda x: x[:, None], batch)
@@ -888,6 +883,7 @@ def main(args):
     print('data loaded',len(trainloader),flush=True)
     #Create Trainer Module, that loads the model and train it
     trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode,k=k,q=q)
+    trainer.calculate_noise(len(trainloader))
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
@@ -896,9 +892,9 @@ def main(args):
     if args.clipping_mode == 'non-private':
         vals = trainer.train_epochs(trainloader,testloader)
     elif args.clipping_mode == 'v1':
-        vals = trainer.train_private_v1(trainloader,testloader,k,q,args.grad_norm,1.,mlbs)
+        vals = trainer.train_private_v1(trainloader,testloader,k,q,trainer.noise_multiplier,args.grad_norm,mlbs)
     elif args.clipping_mode == 'v2':
-        vals = trainer.train_private_v2(trainloader,testloader,k,q,args.grad_norm,1.,mlbs)
+        vals = trainer.train_private_v2(trainloader,testloader,k,q,trainer.noise_multiplier,args.grad_norm,mlbs)
     else:
         vals = trainer.train_epochs_dp(trainloader,testloader)
 
