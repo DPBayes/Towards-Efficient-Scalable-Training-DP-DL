@@ -492,8 +492,9 @@ class TrainerModule:
 
         if diff > 0:
 
-            x = jnp.pad(x, ((0, k - diff), (0, 0), (0, 0), (0, 0)), mode='constant')
-            y = jnp.pad(y, ((0, k - diff)), mode='constant')
+            x = jnp.pad(x, ((0, actual_batch_size - len(y)), (0, 0), (0, 0), (0, 0)), mode='constant')
+            y = jnp.pad(y, ((0, actual_batch_size - len(y))), mode='constant')
+            #k-diff
             print('new shape',x.shape,y.shape)
         
         batch_size = len(x)
@@ -505,6 +506,7 @@ class TrainerModule:
         masks = masks.at[-n_masked_elements].set(0)
         masks = jnp.array(jnp.split(masks, k))
 
+        print('len physical batches',len(physical_batches),'len physical labels',len(physical_labels),'len masks',len(masks),'len max_lb_size',max_lb_size)
             
         ### gradient accumulation
         accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
