@@ -1078,7 +1078,6 @@ class TrainerModule:
                     #jax.block_until_ready()
                                                     
                     batch_time = time.perf_counter() - start_time
-                    self.verify_learning_rate()
                     train_loss += loss / expected_acc_steps
                     total_batch += len(batch[1])
                     correct_batch += cor
@@ -1299,9 +1298,6 @@ class TrainerModule:
     def print_param_values(self,params):
         jax.tree_util.tree_map(lambda x: print(f"Shape: {x.shape}, Values: {x}"), params)
     
-    def verify_learning_rate(self):
-        print(f"Current learning rate: {self.opt_state[1].hyperparams['learning_rate']}")
-
     def load_model(self):
         print('load model name',self.model_name,flush=True)
         main_key, params_key= jax.random.split(key=self.rng,num=2)
