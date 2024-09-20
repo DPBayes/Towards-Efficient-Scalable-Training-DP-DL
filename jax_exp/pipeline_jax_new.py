@@ -492,8 +492,8 @@ class TrainerModule:
 
         if diff > 0:
 
-            x = jnp.pad(x, ((0, actual_batch_size - len(y)), (0, 0), (0, 0), (0, 0)), mode='constant')
-            y = jnp.pad(y, ((0, actual_batch_size - len(y))), mode='constant')
+            x = jnp.pad(x, ((0, k-diff), (0, 0), (0, 0), (0, 0)), mode='constant')
+            y = jnp.pad(y, ((0, k-diff)), mode='constant')
             #k-diff
             print('new shape',x.shape,y.shape)
         
