@@ -180,6 +180,8 @@ class TrainerModule:
         )
 
         self.noise_multiplier = noise_multiplier
+
+        print('noise multiplier',self.noise_multiplier)
     
     def init_non_optimizer(self):
         self.optimizer = optax.adam(learning_rate=self.lr)
@@ -513,6 +515,7 @@ class TrainerModule:
                                                     accumulated_clipped_grads, 
                                                     sum_of_clipped_grads_from_pb
                                                     )
+        print('iteation',t,'noise addition')
         noisy_grad = self.noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C,actual_batch_size)
         
         ### update
