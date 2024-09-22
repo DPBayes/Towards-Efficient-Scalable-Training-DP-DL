@@ -184,7 +184,7 @@ class TrainerModule:
     def init_non_optimizer(self):
         self.optimizer = optax.adam(learning_rate=self.lr)
         self.opt_state = self.optimizer.init(self.params)
-
+        print('init optimizer',self.opt_state)
     # def init_with_chain(self,size,sample_rate):
     #     print('init optimizer, size ',size)
 
@@ -516,7 +516,7 @@ class TrainerModule:
         noisy_grad = self.noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C,actual_batch_size)
         
         ### update
-        updates, opt_state = self.optimizer.update(noisy_grad, opt_state)
+        updates, opt_state = self.optimizer.update(noisy_grad, opt_state,params)
         params = optax.apply_updates(params, updates)
         return params,opt_state
 
@@ -620,7 +620,7 @@ class TrainerModule:
         correct_test = 0
         batch_idx = 0
         for batch_idx,batch in enumerate(data_loader):
-            loss, acc,cor = self.eval_step_non(batch)
+            loss,acc,cor =self.loss_eval(batch)
             test_loss += loss
             correct_test += cor
             total_test += len(batch[1])
