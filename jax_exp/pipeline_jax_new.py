@@ -186,7 +186,7 @@ class TrainerModule:
     def init_non_optimizer(self):
         self.optimizer = optax.adam(learning_rate=self.lr)
         self.opt_state = self.optimizer.init(self.params)
-        print('init optimizer',self.opt_state)
+        #print('init optimizer',self.opt_state)
     # def init_with_chain(self,size,sample_rate):
     #     print('init optimizer, size ',size)
 
@@ -510,6 +510,7 @@ class TrainerModule:
         for pb,yb, mask in zip(physical_batches,physical_labels, masks):
 
             print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
+            print('mask \n',mask)
             sum_of_clipped_grads_from_pb,_,_,_ = self.process_a_physical_batch(params,(pb,yb),mask,C)
             accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                     accumulated_clipped_grads, 
