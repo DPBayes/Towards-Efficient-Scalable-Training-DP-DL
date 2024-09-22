@@ -258,7 +258,7 @@ class TrainerModule:
 
         return cross_loss,(acc,cor)
 
-    @partial(jit,static_argnums=0)
+    #@partial(jit,static_argnums=0)
     def loss_eval(self,batch):
         inputs,targets = batch
         logits = self.model.apply({'params':self.params},inputs)
@@ -506,17 +506,22 @@ class TrainerModule:
         print('len physical batches',len(physical_batches),'len physical labels',len(physical_labels),'len masks',len(masks),'len max_lb_size',max_lb_size)
             
         ### gradient accumulation
+        total_iter = 0
+        correct_iter = 0
         accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
         for pb,yb, mask in zip(physical_batches,physical_labels, masks):
 
             print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
             print('mask \n',mask)
-            sum_of_clipped_grads_from_pb,_,_,_ = self.process_a_physical_batch(params,(pb,yb),mask,C)
+            sum_of_clipped_grads_from_pb,loss_sum,mean_acc,sum_corr = self.process_a_physical_batch(params,(pb,yb),mask,C)
             accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                     accumulated_clipped_grads, 
                                                     sum_of_clipped_grads_from_pb
                                                     )
-        print('iteation',t,'noise addition')
+            total_iter += len(pb)
+            correct_iter += sum_corr
+        print('iteation',t,'before noise addition')
+        print('acc iter',t, correct_iter/total_iter)
         noisy_grad = self.noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C,actual_batch_size)
         
         ### update
