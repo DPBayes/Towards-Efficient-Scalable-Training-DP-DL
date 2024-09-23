@@ -1060,7 +1060,7 @@ class TrainerModule:
                     acc_grads = jax.tree_util.tree_map(
                         lambda x,y: x+y,
                         grads, acc_grads)
-                    if not flag._check_skip_next_step(pop_next=False):
+                    if not flag._check_skip_next_step():
                         print('about to update:')
                         acc_grads = jax.tree_util.tree_map(
                             lambda x: x/expected_bs,
