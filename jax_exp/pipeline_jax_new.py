@@ -592,6 +592,8 @@ class TrainerModule:
             print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
             print('mask \n',mask)
             sum_of_clipped_grads_from_pb,loss_sum,mean_acc,sum_corr = self.process_a_physical_batch_non(params,(pb,yb),mask)
+            print(sum_of_clipped_grads_from_pb)
+            print(accumulated_grads)
             accumulated_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_grads, 
                                                 sum_of_clipped_grads_from_pb
