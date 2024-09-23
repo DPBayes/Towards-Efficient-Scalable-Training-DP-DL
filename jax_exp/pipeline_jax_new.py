@@ -587,21 +587,20 @@ class TrainerModule:
         total_iter = 0
         correct_iter = 0
         accumulated_grads = jax.tree_map(lambda x: 0. * x, params)
+        loss_sum = 0
         for pb,yb, mask in zip(physical_batches,physical_labels, masks):
 
             print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
             print('mask \n',mask)
-            sum_of_clipped_grads_from_pb,loss_sum,mean_acc,sum_corr = self.process_a_physical_batch_non(params,(pb,yb),mask)
-            #print('sum',sum_of_clipped_grads_from_pb)
-            #print('\n ---------------------------- \n')
-            #print('acc',accumulated_grads)
+            sum_of_clipped_grads_from_pb,loss_sb,mean_acc,sum_corr = self.process_a_physical_batch_non(params,(pb,yb),mask)
             accumulated_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_grads, 
                                                 sum_of_clipped_grads_from_pb
                                             )
             total_iter += len(pb)
             correct_iter += sum_corr
-        print('acc iter',t, correct_iter/total_iter)
+            loss_sum += loss_sb
+        print('acc iter',t, correct_iter/total_iter,'loss batch train',loss_sum/total_iter)
         ### update
         updates, opt_state = self.optimizer.update(accumulated_grads, opt_state,params)
         params = optax.apply_updates(params, updates)
