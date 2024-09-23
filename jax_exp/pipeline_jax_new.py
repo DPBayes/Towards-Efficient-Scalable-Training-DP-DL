@@ -258,10 +258,10 @@ class TrainerModule:
 
         return cross_loss,(acc,cor)
 
-    #@partial(jit,static_argnums=0)
-    def loss_eval(self,batch):
+    @partial(jit,static_argnums=0)
+    def loss_eval(self,params,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':self.params},inputs)
+        logits = self.model.apply({'params':params},inputs)
         #print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
@@ -278,7 +278,7 @@ class TrainerModule:
     def eval_step_non(self, batch):
         # Return the accuracy for a single batch
         #batch = jax.tree_map(lambda x: x[:, None], batch)
-        loss,acc,cor =self.loss_eval(batch)
+        loss,acc,cor =self.loss_eval(self.params,batch)
         #loss, acc= self.loss_2(self.params, batch)
         return loss, acc,cor
     
@@ -415,7 +415,23 @@ class TrainerModule:
         
         return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads),jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor)
 
+    @partial(jit,static_argnums=0)
+    def process_a_physical_batch_non(self,params,physical_batch, mask):
+        physical_batch = jax.tree_map(lambda x: x[:, None], physical_batch)
+
+        (loss_val,(acc,cor)), px_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True,argnums=0),in_axes=(None,0))(params,physical_batch)
+
+        def mask_and_sum(x, mask):
+
+            new_shape = (-1,) + (1,) * (x.ndim - 1)
+            mask = mask.reshape(new_shape)
+            return jnp.sum(x * mask, axis=0)
         
+        #px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1)**2, px_grads)
+        px_grads, tree_def = jax.tree_util.tree_flatten(px_grads)
+
+        return jax.tree_map(lambda x: mask_and_sum(x,mask), px_grads),jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor)
+       
     # @partial(jit, static_argnums=0)
     # def process_a_physical_batch(self,mu,physical_batch, mask,C):
     #     foo = lambda x: jax.value_and_grad(self.loss, argnums=0)(mu,x)
@@ -505,6 +521,19 @@ class TrainerModule:
 
         print('len physical batches',len(physical_batches),'len physical labels',len(physical_labels),'len masks',len(masks),'len max_lb_size',max_lb_size)
             
+        @jit
+        def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C,expected_bs):
+            num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
+            treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
+            new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
+            noise = jax.tree_util.tree_map(
+                lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+                accumulated_clipped_grads, jax.tree_util.tree_unflatten(treedef, all_keys))
+            updates = jax.tree_util.tree_map(
+                lambda g, n: g + noise_std * C * n / expected_bs,
+                accumulated_clipped_grads, noise)
+            return updates
+
         ### gradient accumulation
         total_iter = 0
         correct_iter = 0
@@ -522,10 +551,56 @@ class TrainerModule:
             correct_iter += sum_corr
         print('iteation',t,'before noise addition')
         print('acc iter',t, correct_iter/total_iter)
-        noisy_grad = self.noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C,actual_batch_size)
+        noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C,actual_batch_size)
         
         ### update
         updates, opt_state = self.optimizer.update(noisy_grad, opt_state,params)
+        params = optax.apply_updates(params, updates)
+        return params,opt_state
+    
+    def non_private_iteration(self,logical_batch,params,opt_state,k,q,t,max_lb_size):
+        sampling_rng = jax.random.PRNGKey(t + 1)
+        batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
+
+        x,y = logical_batch
+
+        diff = len(y) % k
+
+        if diff > 0:
+
+            x = jnp.pad(x, ((0, max_lb_size-len(y)), (0, 0), (0, 0), (0, 0)), mode='constant')
+            y = jnp.pad(y, ((0, max_lb_size-len(y))), mode='constant')
+            #k-diff
+            print('new shape',x.shape,y.shape)
+        
+        batch_size = len(x)
+        physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
+        physical_labels = jnp.array(jnp.split(y, k))
+        actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(batch_size,), p=q).sum()
+        masks = jnp.ones(max_lb_size)
+        n_masked_elements = max_lb_size - actual_batch_size
+        masks = masks.at[-n_masked_elements].set(0)
+        masks = jnp.array(jnp.split(masks, k))
+
+        print('len physical batches',len(physical_batches),'len physical labels',len(physical_labels),'len masks',len(masks),'len max_lb_size',max_lb_size)
+        ### gradient accumulation
+        total_iter = 0
+        correct_iter = 0
+        accumulated_grads = jax.tree_map(lambda x: 0. * x, params)
+        for pb,yb, mask in zip(physical_batches,physical_labels, masks):
+
+            print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
+            print('mask \n',mask)
+            sum_of_clipped_grads_from_pb,loss_sum,mean_acc,sum_corr = self.process_a_physical_batch_non(params,(pb,yb),mask)
+            accumulated_grads = jax.tree_map(lambda x,y: x+y, 
+                                                accumulated_grads, 
+                                                sum_of_clipped_grads_from_pb
+                                            )
+            total_iter += len(pb)
+            correct_iter += sum_corr
+        print('acc iter',t, correct_iter/total_iter)
+        ### update
+        updates, opt_state = self.optimizer.update(accumulated_grads, opt_state,params)
         params = optax.apply_updates(params, updates)
         return params,opt_state
 
@@ -547,6 +622,15 @@ class TrainerModule:
             print('end epoch',epoch,'acc',acc)
         return self.eval_model(test_loader)
 
+    def train_non_private(self,train_loader,test_loader,k,q,max_lb_size):
+        for epoch in range(self.epochs):
+            for batch_idx,batch in enumerate(train_loader): #logical
+                self.params,self.opt_state =self.non_private_iteration(batch,self.params,self.opt_state,k,q,batch_idx,max_lb_size)
+                _,acc,_,_ = self.eval_model(test_loader)
+                print('end batch ',batch_idx,'acc',acc)
+            _,acc,_,_ = self.eval_model(test_loader)
+            print('end epoch',epoch,'acc',acc)
+        return self.eval_model(test_loader)
 
     def iter_loop_private(self,train_loader,acc_function,params,opt_state,k,q,n,expected_bs):
         #_acc_update = lambda grad, acc : grad + acc
@@ -629,7 +713,7 @@ class TrainerModule:
         correct_test = 0
         batch_idx = 0
         for batch_idx,batch in enumerate(data_loader):
-            loss,acc,cor =self.loss_eval(batch)
+            loss,acc,cor =self.loss_eval(self.params,batch)
             test_loss += loss
             correct_test += cor
             total_test += len(batch[1])
@@ -901,7 +985,7 @@ def main(args):
     trainer.init_non_optimizer()
     
     if args.clipping_mode == 'non-private':
-        vals = trainer.train_epochs(trainloader,testloader)
+        vals = trainer.train_non_private(trainloader,testloader,k,q,mlbs)
     elif args.clipping_mode == 'v1':
         vals = trainer.train_private_v1(trainloader,testloader,k,q,trainer.noise_multiplier,args.grad_norm,mlbs)
     elif args.clipping_mode == 'v2':
