@@ -428,7 +428,7 @@ class TrainerModule:
             return jnp.sum(x * mask, axis=0)
         
         #px_per_param_sq_norms = jax.tree_map(lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1)**2, px_grads)
-        px_grads, tree_def = jax.tree_util.tree_flatten(px_grads)
+        #px_grads, tree_def = jax.tree_util.tree_flatten(px_grads)
 
         return jax.tree_map(lambda x: mask_and_sum(x,mask), px_grads),jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor)
        
@@ -592,9 +592,9 @@ class TrainerModule:
             print('physical bs',len(pb),'physical bs labels',len(yb),'mask',len(mask))
             print('mask \n',mask)
             sum_of_clipped_grads_from_pb,loss_sum,mean_acc,sum_corr = self.process_a_physical_batch_non(params,(pb,yb),mask)
-            print('sum',sum_of_clipped_grads_from_pb)
-            print('\n ---------------------------- \n')
-            print('acc',accumulated_grads)
+            #print('sum',sum_of_clipped_grads_from_pb)
+            #print('\n ---------------------------- \n')
+            #print('acc',accumulated_grads)
             accumulated_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_grads, 
                                                 sum_of_clipped_grads_from_pb
