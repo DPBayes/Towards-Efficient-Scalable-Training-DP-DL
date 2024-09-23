@@ -1053,6 +1053,7 @@ class TrainerModule:
                 ) as memory_safe_data_loader:
                 for batch_idx, batch in enumerate(memory_safe_data_loader): 
                     #with self.collector(tag='batch'):
+                    batch = (jnp.array(batch[0]), jnp.array(batch[1]))
                     samples_used += len(batch[0])
                     #print(samples_used)
                     start_time = time.perf_counter()
@@ -1185,6 +1186,7 @@ class TrainerModule:
             #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
             for batch_idx, batch in enumerate(trainloader): 
+                batch = (jnp.array(batch[0]), jnp.array(batch[1]))
                 #with self.collector(tag='batch'):
                 samples_used += len(batch[0])
                 print('batch idx',batch_idx,'with size',len(batch[0]))
