@@ -311,6 +311,7 @@ def init_non_optimizer(lr,params):
     optimizer = optax.adam(learning_rate=lr)
     opt_state = optimizer.init(params)
     return optimizer,opt_state
+
 @jit
 def grad_acc_update(grads,optimizer,opt_state,params):
     updates,opt_state = optimizer.update(grads,opt_state,params)
@@ -599,7 +600,7 @@ def main(args):
     #tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
     print('Without trainig test acc',test_acc)
 
-    for e in args.epochs:
+    for e in range(args.epochs):
         state, (train_loss, train_accuracy) = train_epoch(state,trainloader)
         test_acc = eval_model(state,testloader)
         print('epoch',e,'test_acc',test_acc)
