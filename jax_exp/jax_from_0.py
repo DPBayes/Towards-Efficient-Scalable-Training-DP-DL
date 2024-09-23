@@ -230,8 +230,26 @@ def eval_step_non(model,params, batch):
     loss,acc,cor = loss_eval(params,model,batch)
     return loss, acc,cor
 
-#@jit
+@jit
 def train_step(state,batch):
+    def loss_fn(params):
+        inputs,targets = batch
+        logits  = state.apply_fn(inputs,params = params,train=True)[0]
+        predicted_class = jnp.argmax(logits,axis=-1)
+
+        cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).mean()
+        acc = jnp.mean(predicted_class ==targets)
+        
+        return cross_loss,acc
+    
+    grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
+    (loss, acc), grads = grad_fn(state.params)
+    new_state = state.apply_gradients(grads=grads)
+    return new_state, loss, acc
+
+
+@jit
+def train_step_private(state,batch):
     def loss_fn(params):
         inputs,targets = batch
         logits  = state.apply_fn(inputs,params = params,train=True)[0]
@@ -261,7 +279,7 @@ def train_epoch(state,data_loader):
         state, loss, accuracy = train_step(state, (inputs,targets))
         train_loss += loss
         train_acc += accuracy
-        print('batch idx',batch_idx,train_loss/len(batch[0]),train_acc/len(batch[0]))
+        print('batch idx',batch_idx,loss/len(batch[0]),accuracy/len(batch[0]))
     
 
     return state, (train_loss/len(data_loader),train_acc//len(data_loader))
@@ -581,7 +599,10 @@ def main(args):
     #tloss,tacc,cor_eval,tot_eval = eval_model(testloader,model,params)
     print('Without trainig test acc',test_acc)
 
-    state, (train_loss, train_accuracy) = train_epoch(state,trainloader)
+    for e in args.epochs:
+        state, (train_loss, train_accuracy) = train_epoch(state,trainloader)
+        test_acc = eval_model(state,testloader)
+        print('epoch',e,'test_acc',test_acc)
 
     print(train_loss,train_accuracy)
     #print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')',flush=True)
