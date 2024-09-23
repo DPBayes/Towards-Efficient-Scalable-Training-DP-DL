@@ -300,7 +300,7 @@ class TrainerModule:
         new_params = optax.apply_updates(params,updates)
         return new_params,new_opt_state
     
-    @partial(jit, static_argnums=0)
+    #@partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
         (loss_val,(acc,cor)), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
         return grads,loss_val,acc,cor
