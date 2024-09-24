@@ -314,7 +314,7 @@ class TrainerModule:
                 print(f"Param {old_k} mean absolute change: {diff}")
     
     @partial(jit,static_argnums=0)
-    def add_noise_fn(self,noise_std,expected_bs,rng_key,updates):
+    def add_noise_fn(self,noise_std,rng_key,updates):
         
         #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
         num_vars = len(jax.tree_util.tree_leaves(updates))
@@ -325,7 +325,7 @@ class TrainerModule:
             lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
             updates, jax.tree_util.tree_unflatten(treedef, all_keys))
         updates = jax.tree_util.tree_map(
-            lambda g, n: (g + noise_std * n)/expected_bs,
+            lambda g, n: (g + noise_std * n),
             updates, noise)
 
         return updates, new_key
@@ -392,7 +392,7 @@ class TrainerModule:
                         if not flag._check_skip_next_step():
                             print('about to update:')
                             
-                            updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,expected_bs,self.rng,acc_grads)
+                            updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,acc_grads)
 
                             #old_params = self.params
                             #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
@@ -540,6 +540,23 @@ class TrainerModule:
         expected_bs = len(trainloader.dataset)/len(trainloader)
         expected_acc_steps = expected_bs // self.physical_bs
         print('expected accumulation steps',expected_acc_steps)
+
+        @jit
+        def add_noise_fn(noise_std,rng_key,updates):
+            
+            #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
+            num_vars = len(jax.tree_util.tree_leaves(updates))
+            treedef = jax.tree_util.tree_structure(updates)
+            new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
+            #print('num_vars',num_vars,flush=True)
+            noise = jax.tree_util.tree_map(
+                lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+                updates, jax.tree_util.tree_unflatten(treedef, all_keys))
+            updates = jax.tree_util.tree_map(
+                lambda g, n: (g + noise_std * n),
+                updates, noise)
+
+            return updates, new_key
         
         comp_time = 0
         gradient_step_ac = 0
@@ -557,6 +574,8 @@ class TrainerModule:
             sample_sizes = []
 
             steps = int(epoch * expected_acc_steps)
+
+            accumulated_iterations = 0
             
             train_loss = 0
             correct = 0
@@ -585,10 +604,13 @@ class TrainerModule:
                     acc_grads = jax.tree_util.tree_map(
                         functools.partial(_acc_update),
                         grads, acc_grads)
+                    accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
-                        
-                        updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,expected_bs,self.rng,acc_grads)
+                        acc_grads = jax.tree_util.tree_map(
+                            lambda x: x/expected_bs*accumulated_iterations,
+                            acc_grads)
+                        updates,self.rng = add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,acc_grads)
 
                         #old_params = self.params
                         #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
@@ -600,7 +622,7 @@ class TrainerModule:
                         print('count',gradient_step_ac)
                         #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-
+                        accumulated_iterations = 0
                     batch_time = time.perf_counter() - start_time
 
                     train_loss += loss
@@ -739,7 +761,7 @@ class TrainerModule:
                 grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
 
                     
-                updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,len(batch[0]),self.rng,grads)
+                updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,grads)
 
                 #old_params = self.params
                 #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
