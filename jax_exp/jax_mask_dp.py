@@ -12,6 +12,9 @@ import math
 import flax.linen as nn
 from transformers import FlaxViTModel
 from private_vit import ViTModelHead
+from jax.config import config
+config.update("jax_debug_nans", True)
+config.update("jax_debug_infs", True)
 
 
 @jax.jit
@@ -380,6 +383,8 @@ def load_model(rng,model_name,dimension,num_classes):
 
 def main(args):
     print(args,flush=True)
+
+    print('devices ',jax.devices(),flush=True)
     rng = jax.random.PRNGKey(0)
 
     trainset,testset = load_dataset(args.dimension)
@@ -431,7 +436,7 @@ def main(args):
                 state, non_private_grad, actual_batch_size = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
             elif clipping_mode == 'private':
                 batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-                state, noisy_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
+                state, noisy_grad, actual_batch_size = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
             t = t+1
         print('after',e,'epoch','iteration',t,flush=True)
         #eval(state,)
