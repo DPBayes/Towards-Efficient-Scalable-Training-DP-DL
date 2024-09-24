@@ -1361,7 +1361,7 @@ class TrainerModule:
 
             #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
             params = variables['params']
-            params['vit'] = freeze(vars['params'])
+            params['vit'] = vars['params']
             #params = unfreeze(params)
             #self.print_param_shapes(params)
             #print(params)
