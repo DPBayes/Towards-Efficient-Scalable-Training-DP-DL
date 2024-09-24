@@ -393,7 +393,7 @@ def main(args):
     state = create_train_state(init_rng, args.lr,model,params)
     q = q = 1/math.ceil(len(trainset)/args.bs)
     n = len(trainset)
-    physical_bs = args.pbs
+    physical_bs = args.phy_bs
 
     alpha = 1e-9 # failure prob.
 
@@ -435,7 +435,7 @@ def main(args):
         print('after',e,'epoch','iteration',t)
         #eval(state,)
 
-main(**dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
+#main(dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
 
     # _, barely_clipped_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 0.0, 1000.0, n)
     # _, just_clipped_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 0.0, 1.0, n)
