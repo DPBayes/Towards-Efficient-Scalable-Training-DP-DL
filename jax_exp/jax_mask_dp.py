@@ -192,7 +192,7 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
 
     ### gradient accumulation
     
-    @jax.jit
+    #@jax.jit
     def body_fun(t, accumulated_clipped_grads):
         pb = physical_batches[t]
         yb = physical_labels[t]
@@ -234,7 +234,7 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
 
     ### gradient accumulation
     
-    @jax.jit
+    #@jax.jit
     def body_fun(t, accumulated_grads):
         pb = physical_batches[t]
         yb = physical_labels[t]
@@ -436,7 +436,7 @@ def main(args):
                 state, non_private_grad, actual_batch_size = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
             elif clipping_mode == 'private':
                 batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-                state, noisy_grad, actual_batch_size = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
+                state, noisy_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
             t = t+1
         print('after',e,'epoch','iteration',t,flush=True)
         #eval(state,)
