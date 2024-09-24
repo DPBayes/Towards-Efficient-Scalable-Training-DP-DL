@@ -20,7 +20,7 @@ def compute_per_example_gradients(state, batch_X, batch_y):
 
     def loss_fn(params, X, y):
         logits = state.apply_fn({'params': params}, X)
-        one_hot = jax.nn.one_hot(y, 10)
+        one_hot = jax.nn.one_hot(y, 100)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
         assert len(loss) == 1
         return loss.sum()
@@ -36,7 +36,7 @@ def compute_gradients_non_private(state, batch_X, batch_y, mask):
 
     def loss_fn(params, X, y):
         logits = state.apply_fn({'params': params}, X)
-        one_hot = jax.nn.one_hot(y, 10)
+        one_hot = jax.nn.one_hot(y, 100)
         loss = jnp.sum(mask * optax.softmax_cross_entropy(logits=logits, labels=one_hot))
         return loss
     
