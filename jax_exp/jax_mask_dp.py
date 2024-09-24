@@ -386,7 +386,7 @@ def main(args):
 
     print('dataset loaded')
 
-    rng,model,params = load_model(rng,args.model_name,args.dimension,args.ten)
+    rng,model,params = load_model(rng,args.model,args.dimension,args.ten)
     
     print('model loaded')
     rng, init_rng = jax.random.split(rng)
