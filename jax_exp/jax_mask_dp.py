@@ -379,12 +379,12 @@ def load_model(rng,model_name,dimension,num_classes):
     return main_rng,model,params
 
 def main(args):
-    print(args)
+    print(args,flush=True)
     rng = jax.random.PRNGKey(0)
 
     trainset,testset = load_dataset(args.dimension)
 
-    print('dataset loaded')
+    print('dataset loaded',flush=True)
 
     rng,model,params = load_model(rng,args.model,args.dimension,args.ten)
     
@@ -408,7 +408,7 @@ def main(args):
         
     max_logical_batch_size = k*physical_bs
 
-    print('n',n,'q',q,'k',k,'max logical batch size',max_logical_batch_size)
+    print('n',n,'q',q,'k',k,'max logical batch size',max_logical_batch_size,flush=True)
 
     steps = args.epochs * math.ceil(len(trainset)/args.bs)
 
@@ -426,7 +426,6 @@ def main(args):
     for e in range(epochs):
         for batch_X, batch_y in trainloader:
             batch_y = jnp.array(batch_y)
-
             if clipping_mode == 'non-private':
                 batch_X = jnp.array(batch_X)
                 state, non_private_grad, actual_batch_size = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
@@ -434,7 +433,7 @@ def main(args):
                 batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
                 state, noisy_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
             t = t+1
-        print('after',e,'epoch','iteration',t)
+        print('after',e,'epoch','iteration',t,flush=True)
         #eval(state,)
 
 #main(dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
