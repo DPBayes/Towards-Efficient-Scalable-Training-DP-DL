@@ -8,8 +8,8 @@ if __name__ == '__main__':
     path_log = 'thr_record.csv'
 
     parser = argparse.ArgumentParser(description='JAX ViT CIFAR Training')
-    parser.add_argument('--lr', default=0.0005, type=float, help='learning rate')
-    parser.add_argument('--epochs', default=3, type=int,
+    parser.add_argument('--lr', default=0.00031, type=float, help='learning rate')
+    parser.add_argument('--epochs', default=2, type=int,
                         help='numter of epochs')
     parser.add_argument('--bs', default=1000, type=int, help='batch size')
     parser.add_argument('--epsilon', default=8, type=float, help='target epsilon')
@@ -17,8 +17,8 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='google/vit-base-patch16-224', type=str)
     parser.add_argument('--dimension', type=int,default=224)
     parser.add_argument('--origin_params', nargs='+', default=None)
-    parser.add_argument('--ten',default=10,type=int)
-    parser.add_argument('--n_workers',default=10,type=int)
+    parser.add_argument('--ten',default=100,type=int)
+    parser.add_argument('--n_workers',default=0,type=int)
     parser.add_argument('--phy_bs',default=100,type=int,help='Physical Batch')
     parser.add_argument('--accountant',default='rdp',type=str)
     parser.add_argument('--grad_norm', '-gn', default=1,
