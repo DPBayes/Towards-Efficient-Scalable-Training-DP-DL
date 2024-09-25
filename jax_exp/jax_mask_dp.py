@@ -71,10 +71,9 @@ def eval_model(data_loader,state):
     total_test = 0
     correct_test = 0
     for batch in data_loader:
-        loss, acc,cor = eval(state,batch[0],batch[1])
-        correct_test += cor
-        total_test += len(batch[1])
-        accs.append(cor/len(batch[1]))
+        batch_X,batch_y = jnp.array(batch[0]),jnp.array(batch[1])
+        acc = eval(state,batch_X,batch_y)
+        accs.append(acc)
         del batch
     eval_acc = jnp.mean(jnp.array(accs))
     
