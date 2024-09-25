@@ -53,11 +53,11 @@ def update_model(state, grads):
     return state.apply_gradients(grads=grads)
 
 @jax.jit
-def eval(state, batch_X, batch_y,num_classes):
+def eval(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
     logits = state.apply_fn({'params': state.params}, batch_X)
-    one_hot = jax.nn.one_hot(batch_y, num_classes)
+    one_hot = jax.nn.one_hot(batch_y, 100)
     loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
     predicted_class = jnp.argmax(logits,axis=-1)
     
