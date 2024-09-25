@@ -428,18 +428,18 @@ def main(args):
     epochs = args.epochs
 
     t = 0
-    for e in range(epochs):
-        for batch_X, batch_y in trainloader:
-            batch_y = jnp.array(batch_y)
-            if clipping_mode == 'non-private':
-                batch_X = jnp.array(batch_X)
-                state, non_private_grad, actual_batch_size = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
-            elif clipping_mode == 'private':
-                batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-                state, noisy_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
-            t = t+1
-        print('after',e,'epoch','iteration',t,flush=True)
-        #eval(state,)
+    #for e in range(epochs): #The sampler already does the n iterations
+    for batch_X, batch_y in trainloader:
+        batch_y = jnp.array(batch_y)
+        if clipping_mode == 'non-private':
+            batch_X = jnp.array(batch_X)
+            state, non_private_grad, actual_batch_size = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
+        elif clipping_mode == 'private':
+            batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
+            state, noisy_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
+        t = t+1
+        print('after iteration',t,flush=True)
+    #eval(state,)
 
 #main(dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
 
