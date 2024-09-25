@@ -65,13 +65,13 @@ def eval(state, batch_X, batch_y,num_classes):
 
     return acc
 
-def eval_model(data_loader,state,num_classes):
+def eval_model(data_loader,state):
     # Test model on all images of a data loader and return avg loss
     accs = []
     total_test = 0
     correct_test = 0
     for batch in data_loader:
-        loss, acc,cor = eval(state,batch[0],batch[1],num_classes)
+        loss, acc,cor = eval(state,batch[0],batch[1],100)
         correct_test += cor
         total_test += len(batch[1])
         accs.append(cor/len(batch[1]))
@@ -481,7 +481,7 @@ def main(args):
         elif clipping_mode == 'private':
             batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
-        acc,cor_eval,total_eval = eval_model(testloader,state,args.ten)
+        acc,cor_eval,total_eval = eval_model(testloader,state)
         t = t+1
         samples += actual_batch_size
         epoch_time += batch_time
