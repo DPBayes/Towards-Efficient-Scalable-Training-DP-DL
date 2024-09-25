@@ -13,10 +13,14 @@ import flax.linen as nn
 from transformers import FlaxViTModel
 from private_vit import ViTModelHead
 from jax.config import config
+import warnings
 config.update("jax_debug_nans", True)
 config.update("jax_debug_infs", True)
 
 import time
+
+from dp_accounting import dp_event,rdp
+from opacus.accountants.utils import get_noise_multiplier
 
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
@@ -52,7 +56,7 @@ def compute_gradients_non_private(state, batch_X, batch_y, mask):
 def update_model(state, grads):
     return state.apply_gradients(grads=grads)
 
-@jax.jit
+
 def eval(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
@@ -68,8 +72,6 @@ def eval(state, batch_X, batch_y):
 def eval_model(data_loader,state):
     # Test model on all images of a data loader and return avg loss
     accs = []
-    total_test = 0
-    correct_test = 0
     for batch in data_loader:
         batch_X,batch_y = jnp.array(batch[0]),jnp.array(batch[1])
         acc = eval(state,batch_X,batch_y)
@@ -77,7 +79,7 @@ def eval_model(data_loader,state):
         del batch
     eval_acc = jnp.mean(jnp.array(accs))
     
-    return eval_acc,correct_test,total_test
+    return eval_acc
 
 def create_train_state(rng, lr,model,params):
     """Creates initial `TrainState`."""
@@ -155,7 +157,7 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     ### update
     new_state = update_model(state, noisy_grad)
     batch_time = time.perf_counter() - start_time
-    return new_state, noisy_grad, actual_batch_size,batch_time
+    return new_state, noisy_grad, logical_batch_size,batch_time
 
 def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, full_data_size):
     params = state.params
@@ -292,7 +294,7 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
     ### update
     new_state = update_model(state, accumulated_grads)
     batch_time = time.perf_counter() - start_time
-    return new_state, accumulated_grads, actual_batch_size,batch_time
+    return new_state, accumulated_grads, logical_batch_size,batch_time
 
 class FixedBatchsizeSampler(Sampler[List[int]]):
 
@@ -419,6 +421,37 @@ def load_model(rng,model_name,dimension,num_classes):
         params = params
     return main_rng,model,params
 
+def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
+    if num_examples * target_delta > 1.:
+        warnings.warn('Your delta might be too high.')
+
+    print('steps',steps,flush=True)
+
+    print('noise multiplier',noise_multiplier,flush=True)
+
+    q = batch_size / float(num_examples)
+    orders = list(jnp.linspace(1.1, 10.9, 99)) + list(range(11, 64))
+    accountant = rdp.rdp_privacy_accountant.RdpAccountant(orders) # type: ignore
+    accountant.compose(
+        dp_event.PoissonSampledDpEvent(
+            q, dp_event.GaussianDpEvent(noise_multiplier)), steps)
+    
+    epsilon = accountant.get_epsilon(target_delta)
+    delta = accountant.get_delta(epsilon)
+
+    return epsilon,delta
+
+def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
+    noise_multiplier = get_noise_multiplier(
+        target_epsilon=target_epsilon,
+        target_delta=target_delta,
+        sample_rate=sample_rate,
+        epochs=epochs,
+        accountant=accountant
+    )
+
+    return noise_multiplier
+
 def main(args):
     print(args,flush=True)
 
@@ -467,10 +500,15 @@ def main(args):
     iters_per_epoch = math.ceil(len(trainset)/args.bs)
     t = 0
     #for e in range(epochs): #The sampler already does the n iterations
+
+    noise_multiplier = calculate_noise(q,args.epsilon,args.target_delta,epochs,'rdp')
+
     samples = 0
     epoch_time = 0
     throughtputs = np.zeros(epochs)
+    throughtputs_t = np.zeros(epochs)
     e = 0
+    time_epoch = time.perf_counter()
     for batch_X, batch_y in trainloader:
         print('start iteration',t)
         batch_y = jnp.array(batch_y)
@@ -479,16 +517,22 @@ def main(args):
             state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
         elif clipping_mode == 'private':
             batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-            state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
-        acc,cor_eval,total_eval = eval_model(testloader,state)
+            state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
+            epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
+        
+            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+        acc = eval_model(testloader,state)
         t = t+1
         samples += actual_batch_size
         epoch_time += batch_time
         if t % iters_per_epoch:
+            time_epoch_total = time.perf_counter() - time_epoch
             throughtputs[e] = samples/epoch_time
+            throughtputs_t[e] = samples/time_epoch_total
             samples = 0
             epoch_time = 0
             e += 1 
+            time_epoch = time.perf_counter()
         print('after iteration',t,'acc eval',acc,flush=True)
 
     print(throughtputs)
