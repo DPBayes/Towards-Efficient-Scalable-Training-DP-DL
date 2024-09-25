@@ -16,6 +16,7 @@ from jax.config import config
 config.update("jax_debug_nans", True)
 config.update("jax_debug_infs", True)
 
+import time
 
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
@@ -67,23 +68,17 @@ def eval(state, batch_X, batch_y,num_classes):
 def eval_model(data_loader,state,num_classes):
     # Test model on all images of a data loader and return avg loss
     accs = []
-    losses = []
-    test_loss = 0
     total_test = 0
     correct_test = 0
-    batch_idx = 0
-    for batch_idx,batch in enumerate(data_loader):
+    for batch in data_loader:
         loss, acc,cor = eval(state,batch[0],batch[1],num_classes)
-        test_loss += loss
         correct_test += cor
         total_test += len(batch[1])
         accs.append(cor/len(batch[1]))
-        losses.append(float(loss))
         del batch
     eval_acc = jnp.mean(jnp.array(accs))
-    eval_loss = jnp.mean(jnp.array(losses))
     
-    return test_loss/len(data_loader),eval_acc,correct_test,total_test
+    return eval_acc,correct_test,total_test
 
 def create_train_state(rng, lr,model,params):
     """Creates initial `TrainState`."""
@@ -145,7 +140,9 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     ### gradient accumulation
     total_iter = 0
     correct_iter = 0
+
     accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
+    start_time = time.perf_counter()
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
         per_example_gradients = compute_per_example_gradients(state, pb, yb)
         sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
@@ -158,7 +155,8 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
 
     ### update
     new_state = update_model(state, noisy_grad)
-    return new_state, noisy_grad, actual_batch_size
+    batch_time = time.perf_counter() - start_time
+    return new_state, noisy_grad, actual_batch_size,batch_time
 
 def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, full_data_size):
     params = state.params
@@ -215,7 +213,7 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     new_state = update_model(state, noisy_grad)
     return new_state, noisy_grad, actual_batch_size
 
-def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
+def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_size):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
@@ -249,12 +247,53 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
 
     
     accumulated_grads0 = jax.tree_map(lambda x: 0. * x, params)
+
+    start_time = time.perf_counter()
     accumulated_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_grads0)
 
 
     ### update
     new_state = update_model(state, accumulated_grads)
-    return new_state, accumulated_grads, actual_batch_size
+    batch_time = time.perf_counter() - start_time
+    return new_state, accumulated_grads, actual_batch_size,batch_time
+
+
+def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
+    params = state.params
+    
+    sampling_rng = jax.random.PRNGKey(t + 1)
+    batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
+
+    x, y = logical_batch
+
+    logical_batch_size = len(x)
+    physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
+    physical_labels = jnp.array(jnp.split(y, k))
+    # poisson subsample
+    actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
+    n_masked_elements = logical_batch_size - actual_batch_size
+    masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
+    masks = jnp.array(jnp.split(masks, k))
+
+    ### gradient accumulation
+
+    accumulated_grads = jax.tree_map(lambda x: 0. * x, params)
+    start_time = time.perf_counter()
+    for pb, yb, mask in zip(physical_batches, physical_labels, masks):
+        summed_grads_from_pb = compute_gradients_non_private(state, pb, yb, mask)
+        
+        accumulated_grads = jax.tree_map(lambda x,y: x+y, 
+                                                accumulated_grads, 
+                                                summed_grads_from_pb
+                                                )
+
+    #accumulated_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_grads0)
+
+
+    ### update
+    new_state = update_model(state, accumulated_grads)
+    batch_time = time.perf_counter() - start_time
+    return new_state, accumulated_grads, actual_batch_size,batch_time
 
 class FixedBatchsizeSampler(Sampler[List[int]]):
 
@@ -413,9 +452,9 @@ def main(args):
         
     max_logical_batch_size = k*physical_bs
 
-    print('n',n,'q',q,'k',k,'max logical batch size',max_logical_batch_size,flush=True)
-
     steps = args.epochs * math.ceil(len(trainset)/args.bs)
+
+    print('n',n,'q',q,'k',k,'max logical batch size',max_logical_batch_size,'steps',steps,flush=True)
 
     fbs = FixedBatchsizeSampler(num_samples_total=n, batch_size=max_logical_batch_size, steps=steps)
 
@@ -426,19 +465,34 @@ def main(args):
     clipping_mode = args.clipping_mode
 
     epochs = args.epochs
-
+    iters_per_epoch = math.ceil(len(trainset)/args.bs)
     t = 0
     #for e in range(epochs): #The sampler already does the n iterations
+    samples = 0
+    epoch_time = 0
+    throughtputs = np.zeros(epochs)
+    e = 0
     for batch_X, batch_y in trainloader:
+        print('start iteration',t)
         batch_y = jnp.array(batch_y)
         if clipping_mode == 'non-private':
             batch_X = jnp.array(batch_X)
-            state, non_private_grad, actual_batch_size = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
+            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
         elif clipping_mode == 'private':
             batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-            state, noisy_grad, actual_batch_size = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
+            state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, 10.0, 1.0, n)
+        acc,cor_eval,total_eval = eval_model(testloader,state,args.ten)
         t = t+1
-        print('after iteration',t,flush=True)
+        samples += actual_batch_size
+        epoch_time += batch_time
+        if t % iters_per_epoch:
+            throughtputs[e] = samples/epoch_time
+            samples = 0
+            epoch_time = 0
+            e += 1 
+        print('after iteration',t,'acc eval',acc,flush=True)
+
+    print(throughtputs)
     #eval(state,)
 
 #main(dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
