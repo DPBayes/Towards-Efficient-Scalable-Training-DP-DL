@@ -37,12 +37,12 @@ if __name__ == '__main__':
     t_th = None
     comp_time = 0
     try:
-        thr,t_th,comp_time,acc = main(args)
+        thr,acc = main(args)
         err = 'None'
     except RuntimeError as e:
         print(e)
         err = 'OOM'
-
+    t_th,comp_time = 0,0
     row = [args.model,args.clipping_mode,args.epochs,args.phy_bs,err,thr,t_th,acc,comp_time,args.epsilon]
 
     exists = os.path.exists(path_log)

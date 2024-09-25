@@ -492,6 +492,7 @@ def main(args):
         print('after iteration',t,'acc eval',acc,flush=True)
 
     print(throughtputs)
+    return np.mean(throughtputs),acc
     #eval(state,)
 
 #main(dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
