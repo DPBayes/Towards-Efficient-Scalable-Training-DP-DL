@@ -21,6 +21,7 @@ import time
 
 from dp_accounting import dp_event,rdp
 from opacus.accountants.utils import get_noise_multiplier
+from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
 
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
@@ -419,7 +420,7 @@ def load_model(rng,model_name,dimension,num_classes):
         #model.apply({'params':params},x)
         model = model
         params = params
-    return main_rng,model,params
+    return main_rng,model,freeze(params)
 
 def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
     if num_examples * target_delta > 1.:

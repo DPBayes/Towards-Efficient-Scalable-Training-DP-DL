@@ -1391,7 +1391,7 @@ class TrainerModule:
             #print(params)
             #model.apply({'params':params},x)
             self.model = model
-            self.params = params
+            self.params = freeze(params)
 
         else:
             crop_size = self.dimension
