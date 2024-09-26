@@ -120,7 +120,7 @@ def process_a_physical_batch(px_grads, mask, C):
 
     return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
 
-def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_size):
+def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
@@ -158,8 +158,8 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
     start_time = time.perf_counter()
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
-        pb = prepare_data(pb)
-        yb = prepare_data(yb)
+        pb =prepare_data(gpus,pb)
+        yb =prepare_data(gpus,yb)
         per_example_gradients = compute_per_example_gradients(state, pb, yb)
         sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
         accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
@@ -174,13 +174,14 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     batch_time = time.perf_counter() - start_time
     return new_state, noisy_grad, logical_batch_size,batch_time
 
-def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, full_data_size):
+def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
     batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
 
     x, y = logical_batch
+    x,y= prepare_data(gpus,x),prepare_data(gpus,y)
 
     logical_batch_size = len(x)
     physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
@@ -233,14 +234,14 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     batch_time = time.perf_counter() - start_time
     return new_state, noisy_grad, actual_batch_size,batch_time
 
-def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_size):
+def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_size,cpus,gpus):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
     batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
 
     x, y = logical_batch
-
+    x,y= prepare_data(gpus,x),prepare_data(gpus,y)
     logical_batch_size = len(x)
     physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
     physical_labels = jnp.array(jnp.split(y, k))
@@ -278,7 +279,7 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     return new_state, accumulated_grads, actual_batch_size,batch_time
 
 
-def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
+def non_private_iteration(logical_batch, state, k, q, t, full_data_size,cpus,gpus):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
@@ -300,8 +301,8 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
     accumulated_grads = jax.tree_map(lambda x: 0. * x, params)
     start_time = time.perf_counter()
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
-        pb = prepare_data(pb)
-        yb = prepare_data(yb)
+        pb =prepare_data(gpus,pb)
+        yb =prepare_data(gpus,yb)
         summed_grads_from_pb = compute_gradients_non_private(state, pb, yb, mask)
         
         accumulated_grads = jax.tree_map(lambda x,y: x+y, 
@@ -474,8 +475,8 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
     return noise_multiplier
 
 @jax.jit
-def prepare_data(batch):
-    return jax.tree_map(jax.device_put, batch)
+def prepare_data(device,batch):
+    return jax.device_put(batch,device[0])
 
 def print_device(x):
     print(f"Device: {x.device()}")
@@ -540,33 +541,35 @@ def main(args):
     time_epoch = time.perf_counter()
 
     print('start training',flush=True)
-    #print('Device state')
-    #print_device(state)
+
+    cpus = jax.devices("cpu")
+    gpus = jax.devices("gpu")
 
     for batch_X, batch_y in trainloader:
         print('start iteration',t,flush=True)
+        batch_X,batch_y = prepare_data(cpus,batch_X),prepare_data(cpus,batch_y)
         #batch_y = jnp.array(batch_y)
-        print(type(batch_X))
-        print(jax.device_put(batch_X).device_buffer.device()) 
+        #print(type(batch_X))
+        #print(jax.device_put(batch_X).device_buffer.device()) 
         #start_trace('./tmp/jax-trace',create_perfetto_trace=True)
 
         if clipping_mode == 'non-private':
             #batch_X = jnp.array(batch_X)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
-            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
+            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
         elif clipping_mode == 'private':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
-            state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
+            state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
         elif clipping_mode == 'non-private-fori':
             #batch_X = jnp.array(batch_X)
-            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n)
+            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
         elif clipping_mode == 'private-fori':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-            state, noisy_grad, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
+            state, noisy_grad, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
