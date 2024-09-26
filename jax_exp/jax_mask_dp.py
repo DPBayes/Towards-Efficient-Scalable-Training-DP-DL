@@ -527,8 +527,8 @@ def main(args):
 
     samples = 0
     epoch_time = 0
-    throughtputs = np.zeros(epochs)
-    throughtputs_t = np.zeros(epochs)
+    throughtputs = []
+    throughtputs_t = []
     e = 0
     time_epoch = time.perf_counter()
 
@@ -562,15 +562,16 @@ def main(args):
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
         stop_trace()
-
+        del batch_X,batch_y
         acc = eval_model(testloader,state)
         t = t+1
         samples += actual_batch_size
         epoch_time += batch_time
         if t % iters_per_epoch:
+            print('finish epoch',e,'t',t)
             time_epoch_total = time.perf_counter() - time_epoch
-            throughtputs[e] = samples/epoch_time
-            throughtputs_t[e] = samples/time_epoch_total
+            throughtputs.append(samples/epoch_time)
+            throughtputs_t.append(samples/time_epoch_total)
             samples = 0
             epoch_time = 0
             e += 1 
