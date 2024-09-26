@@ -611,7 +611,7 @@ class TrainerModule:
 
 
                         updates = jax.tree_util.tree_map(
-                            lambda x: x/expected_bs*accumulated_iterations,
+                            lambda x: x/expected_bs,
                             updates)
 
                         #old_params = self.params
