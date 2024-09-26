@@ -306,8 +306,8 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
                                                 )
 
     #accumulated_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_grads0)
-
-
+    print('acc grads device')
+    print_device(accumulated_grads)
     ### update
     new_state = update_model(state, accumulated_grads)
     batch_time = time.perf_counter() - start_time
@@ -473,6 +473,9 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 def prepare_data(batch):
     return jax.tree_map(jax.device_put, batch)
 
+def print_device(x):
+    print(f"Device: {x.device()}")
+
 
 def main(args):
     print(args,flush=True)
@@ -533,6 +536,8 @@ def main(args):
     time_epoch = time.perf_counter()
 
     print('start training',flush=True)
+    print('Device state')
+    print_device(state)
 
     for batch_X, batch_y in trainloader:
         print('start iteration',t,flush=True)
