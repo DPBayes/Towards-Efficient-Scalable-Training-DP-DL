@@ -614,9 +614,9 @@ class TrainerModule:
                         print('about to update:')
                         updates,self.rng = add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,acc_grads)
 
-                        updates = jax.tree_util.tree_map(
-                            lambda x: x/expected_bs*accumulated_iterations,
-                            updates)
+                        # updates = jax.tree_util.tree_map(
+                        #     lambda x: x/expected_bs*accumulated_iterations,
+                        #     updates)
 
                         #old_params = self.params
                         #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
@@ -1092,9 +1092,9 @@ class TrainerModule:
                     accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
-                        acc_grads = jax.tree_util.tree_map(
-                            lambda x: x/expected_bs*accumulated_iterations,
-                            acc_grads)
+                        #acc_grads = jax.tree_util.tree_map(
+                        #    lambda x: x/expected_bs*accumulated_iterations,
+                        #    acc_grads)
                         #old_params = self.params
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
                         gradient_step_ac += 1

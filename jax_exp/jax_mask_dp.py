@@ -129,8 +129,8 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     x, y = logical_batch
 
     logical_batch_size = len(x)
-    physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
-    physical_labels = jnp.array(jnp.split(y, k))
+    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    physical_labels = np.array(np.split(y, k))
     # poisson subsample
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
@@ -158,6 +158,8 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
     start_time = time.perf_counter()
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
+        pb = prepare_data(pb)
+        yb = prepare_data(yb)
         per_example_gradients = compute_per_example_gradients(state, pb, yb)
         sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
         accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
@@ -285,8 +287,8 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
     x, y = logical_batch
 
     logical_batch_size = len(x)
-    physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
-    physical_labels = jnp.array(jnp.split(y, k))
+    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    physical_labels = np.array(np.split(y, k))
     # poisson subsample
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
@@ -298,6 +300,8 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
     accumulated_grads = jax.tree_map(lambda x: 0. * x, params)
     start_time = time.perf_counter()
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
+        pb = prepare_data(pb)
+        yb = prepare_data(yb)
         summed_grads_from_pb = compute_gradients_non_private(state, pb, yb, mask)
         
         accumulated_grads = jax.tree_map(lambda x,y: x+y, 
@@ -306,8 +310,8 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size):
                                                 )
 
     #accumulated_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_grads0)
-    print('acc grads device')
-    print_device(accumulated_grads)
+    #print('acc grads device')
+    #print_device(accumulated_grads)
     ### update
     new_state = update_model(state, accumulated_grads)
     batch_time = time.perf_counter() - start_time
@@ -541,34 +545,31 @@ def main(args):
 
     for batch_X, batch_y in trainloader:
         print('start iteration',t,flush=True)
-        batch_y = jnp.array(batch_y)
+        #batch_y = jnp.array(batch_y)
 
-        batch_X = prepare_data(batch_X)
-        batch_y = prepare_data(batch_y)
-
-        start_trace('./tmp/jax-trace',create_perfetto_trace=True)
+        #start_trace('./tmp/jax-trace',create_perfetto_trace=True)
 
         if clipping_mode == 'non-private':
-            batch_X = jnp.array(batch_X)
+            #batch_X = jnp.array(batch_X)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
             state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
         elif clipping_mode == 'private':
-            batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
+            batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
         elif clipping_mode == 'non-private-fori':
-            batch_X = jnp.array(batch_X)
+            #batch_X = jnp.array(batch_X)
             state, non_private_grad, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n)
         elif clipping_mode == 'private-fori':
-            batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
+            batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
-        stop_trace()
+        #stop_trace()
         del batch_X,batch_y
         acc = eval_model(testloader,state)
         t = t+1
