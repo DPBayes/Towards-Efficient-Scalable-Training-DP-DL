@@ -474,7 +474,7 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 
     return noise_multiplier
 
-@jax.jit
+#@jax.jit
 def prepare_data(device,batch):
     return jax.device_put(batch,device[0])
 
