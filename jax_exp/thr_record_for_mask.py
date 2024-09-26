@@ -10,7 +10,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='JAX ViT CIFAR Training')
     parser.add_argument('--lr', default=0.00031, type=float, help='learning rate')
     parser.add_argument('--epochs', default=2, type=int,
-                        help='numter of epochs')
+                        help='number of epochs')
     parser.add_argument('--bs', default=1000, type=int, help='batch size')
     parser.add_argument('--epsilon', default=8, type=float, help='target epsilon')
     parser.add_argument('--clipping_mode', default='non-private', type=str)

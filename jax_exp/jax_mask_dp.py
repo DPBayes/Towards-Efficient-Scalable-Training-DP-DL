@@ -519,8 +519,17 @@ def main(args):
             batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
-        
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+            print(privacy_results)
+        elif clipping_mode == 'non-private-fori':
+            batch_X = jnp.array(batch_X)
+            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n)
+        elif clipping_mode == 'private-fori':
+            batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
+            state, noisy_grad, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
+            epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
+            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+            print(privacy_results)
         acc = eval_model(testloader,state)
         t = t+1
         samples += actual_batch_size
