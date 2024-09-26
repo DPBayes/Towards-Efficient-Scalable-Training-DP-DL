@@ -1,5 +1,13 @@
 import os
 import tensorflow as tf
+
+
+tf.config.experimental.set_visible_devices([], 'GPU')
+
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".65"
+os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
+
 import jax
 import optax
 import jax.numpy as jnp
@@ -18,12 +26,6 @@ from jax.config import config
 import warnings
 config.update("jax_debug_nans", True)
 config.update("jax_debug_infs", True)
-
-tf.config.experimental.set_visible_devices([], 'GPU')
-
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".65"
-os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
 
 import time
 
