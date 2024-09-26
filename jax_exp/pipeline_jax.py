@@ -1547,6 +1547,7 @@ def privatize_dataloader(data_loader):
 
 def main(args):
     print(args,flush=True)
+    print('devices ',jax.devices(),flush=True)
     generator = set_seeds(args.seed)
     #Load data
     trainloader,testloader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,args.n_workers,generator,args.normalization)
