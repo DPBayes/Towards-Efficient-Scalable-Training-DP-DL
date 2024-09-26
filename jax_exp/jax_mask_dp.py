@@ -536,8 +536,8 @@ def main(args):
     time_epoch = time.perf_counter()
 
     print('start training',flush=True)
-    print('Device state')
-    print_device(state)
+    #print('Device state')
+    #print_device(state)
 
     for batch_X, batch_y in trainloader:
         print('start iteration',t,flush=True)
