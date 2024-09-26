@@ -209,13 +209,17 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
 
     
     accumulated_clipped_grads0 = jax.tree_map(lambda x: 0. * x, params)
+
+    start_time = time.perf_counter()
+
     accumulated_clipped_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_clipped_grads0)
 
     noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C)
 
     ### update
     new_state = update_model(state, noisy_grad)
-    return new_state, noisy_grad, actual_batch_size
+    batch_time = time.perf_counter() - start_time
+    return new_state, noisy_grad, actual_batch_size,batch_time
 
 def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_size):
     params = state.params
