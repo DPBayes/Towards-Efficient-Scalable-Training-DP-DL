@@ -23,6 +23,8 @@ from dp_accounting import dp_event,rdp
 from opacus.accountants.utils import get_noise_multiplier
 from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
 
+from jax.profiler import start_trace, stop_trace
+
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
@@ -453,6 +455,11 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 
     return noise_multiplier
 
+@jax.jit
+def prepare_data(batch):
+    return jax.tree_map(jax.device_put, batch)
+
+
 def main(args):
     print(args,flush=True)
 
@@ -510,9 +517,18 @@ def main(args):
     throughtputs_t = np.zeros(epochs)
     e = 0
     time_epoch = time.perf_counter()
+
+    print('start training',flush=True)
+
     for batch_X, batch_y in trainloader:
-        print('start iteration',t)
+        print('start iteration',t,flush=True)
         batch_y = jnp.array(batch_y)
+
+        batch_X = prepare_data(batch_X)
+        batch_y = prepare_data(batch_y)
+
+        start_trace('./tmp/jax-trace')
+
         if clipping_mode == 'non-private':
             batch_X = jnp.array(batch_X)
             state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
@@ -521,7 +537,7 @@ def main(args):
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-            print(privacy_results)
+            print(privacy_results,flush=True)
         elif clipping_mode == 'non-private-fori':
             batch_X = jnp.array(batch_X)
             state, non_private_grad, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n)
@@ -530,7 +546,9 @@ def main(args):
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-            print(privacy_results)
+            print(privacy_results,flush=True)
+        stop_trace()
+
         acc = eval_model(testloader,state)
         t = t+1
         samples += actual_batch_size
