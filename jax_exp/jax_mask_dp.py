@@ -546,7 +546,8 @@ def main(args):
     for batch_X, batch_y in trainloader:
         print('start iteration',t,flush=True)
         #batch_y = jnp.array(batch_y)
-
+        print(type(batch_X))
+        print(jax.device_put(batch_X).device_buffer.device()) 
         #start_trace('./tmp/jax-trace',create_perfetto_trace=True)
 
         if clipping_mode == 'non-private':
