@@ -531,7 +531,7 @@ def main(args):
         batch_X = prepare_data(batch_X)
         batch_y = prepare_data(batch_y)
 
-        start_trace('./tmp/jax-trace')
+        start_trace('./tmp/jax-trace',create_perfetto_trace=True)
 
         if clipping_mode == 'non-private':
             batch_X = jnp.array(batch_X)
