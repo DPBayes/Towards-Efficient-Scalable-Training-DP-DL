@@ -601,17 +601,21 @@ class TrainerModule:
                     start_time = time.perf_counter()
                     grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
                     #print('num_clipped at',batch_idx,':',num_clipped)
-                    acc_grads = jax.tree_util.tree_map(
-                        functools.partial(_acc_update),
-                        grads, acc_grads)
+
+                    acc_grads = jax.tree_map(lambda x,y: x+y, 
+                                                grads, 
+                                                acc_grads
+                                                )
+                    # acc_grads = jax.tree_util.tree_map(
+                    #     functools.partial(_acc_update),
+                    #     grads, acc_grads)
                     accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
                         updates,self.rng = add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,acc_grads)
 
-
                         updates = jax.tree_util.tree_map(
-                            lambda x: x/expected_bs,
+                            lambda x: x/expected_bs*accumulated_iterations,
                             updates)
 
                         #old_params = self.params
@@ -1066,7 +1070,7 @@ class TrainerModule:
             total_batch = 0
             correct_batch = 0
             batch_idx = 0
-            
+            accumulated_iterations = 0
             times_up = 0
             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
@@ -1085,10 +1089,11 @@ class TrainerModule:
                     acc_grads = jax.tree_util.tree_map(
                         lambda x,y: x+y,
                         grads, acc_grads)
+                    accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
                         acc_grads = jax.tree_util.tree_map(
-                            lambda x: x/expected_bs,
+                            lambda x: x/expected_bs*accumulated_iterations,
                             acc_grads)
                         #old_params = self.params
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
@@ -1099,6 +1104,7 @@ class TrainerModule:
                         #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                         times_up += 1
+                        accumulated_iterations = 0 
 
                     #jax.block_until_ready()
                                                     
