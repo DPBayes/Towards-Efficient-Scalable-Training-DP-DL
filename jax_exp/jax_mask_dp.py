@@ -545,9 +545,11 @@ def main(args):
 
         if clipping_mode == 'non-private':
             batch_X = jnp.array(batch_X)
+            print(jax.device_memory_usage())
             state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n)
         elif clipping_mode == 'private':
             batch_X = jnp.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
+            print(jax.device_memory_usage())
             state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
@@ -567,7 +569,7 @@ def main(args):
         t = t+1
         samples += actual_batch_size
         epoch_time += batch_time
-        if t % iters_per_epoch:
+        if t % iters_per_epoch == 0:
             print('finish epoch',e,'t',t)
             time_epoch_total = time.perf_counter() - time_epoch
             throughtputs.append(samples/epoch_time)
