@@ -192,8 +192,8 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     x,y= prepare_data(gpus,x),prepare_data(gpus,y)
 
     logical_batch_size = len(x)
-    physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
-    physical_labels = jnp.array(jnp.split(y, k))
+    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    physical_labels = np.array(np.split(y, k))
     # poisson subsample
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
@@ -214,7 +214,8 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
         return updates
 
     ### gradient accumulation
-    
+    physical_batches =prepare_data(gpus,physical_batches)
+    physical_labels =prepare_data(gpus,physical_labels)
     #@jax.jit
     def body_fun(t, accumulated_clipped_grads):
         pb = physical_batches[t]
@@ -251,8 +252,8 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     x, y = logical_batch
     x,y= prepare_data(gpus,x),prepare_data(gpus,y)
     logical_batch_size = len(x)
-    physical_batches = jnp.array(jnp.split(x, k)) # k x pbs x dim
-    physical_labels = jnp.array(jnp.split(y, k))
+    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    physical_labels = np.array(np.split(y, k))
     # poisson subsample
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
@@ -260,7 +261,8 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     masks = jnp.array(jnp.split(masks, k))
 
     ### gradient accumulation
-    
+    physical_batches =prepare_data(gpus,physical_batches)
+    physical_labels =prepare_data(gpus,physical_labels)
     #@jax.jit
     def body_fun(t, accumulated_grads):
         pb = physical_batches[t]
@@ -565,7 +567,7 @@ def main(args):
         #batch_y = jnp.array(batch_y)
         #print(type(batch_X))
         #print(jax.device_put(batch_X).device_buffer.device()) 
-        start_trace(f'./tmp/jax-trace/{clipping_mode}',create_perfetto_trace=True)
+        #start_trace(f'./tmp/jax-trace/{clipping_mode}',create_perfetto_trace=True)
 
         if clipping_mode == 'non-private':
             #batch_X = jnp.array(batch_X)
@@ -587,7 +589,7 @@ def main(args):
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
-        stop_trace()
+        #stop_trace()
         del batch_X,batch_y
         xla_client._xla.collect_garbage()
         acc = eval_model(testloader,state)
