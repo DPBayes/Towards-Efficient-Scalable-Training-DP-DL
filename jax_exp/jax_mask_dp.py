@@ -101,7 +101,7 @@ def create_train_state(rng, lr,model,params):
     #cnn = CNN()
     #params = cnn.init(rng, jnp.ones([1, 28, 28, 1]))['params']
     tx = optax.adam(lr)
-    return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
+    return train_state.TrainState.create(apply_fn=jax.jit(model.apply), params=params, tx=tx)
 
 @jax.jit
 def process_a_physical_batch(px_grads, mask, C):
@@ -160,8 +160,8 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
         pb =prepare_data(gpus,pb)
         yb =prepare_data(gpus,yb)
-        per_example_gradients = compute_per_example_gradients(state, pb, yb)
-        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
+        per_example_gradients = jax.block_until_ready(compute_per_example_gradients(state, pb, yb))
+        sum_of_clipped_grads_from_pb = jax.block_until_ready(process_a_physical_batch(per_example_gradients, mask, C))
         accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_clipped_grads, 
                                                 sum_of_clipped_grads_from_pb
@@ -170,7 +170,7 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C)
 
     ### update
-    new_state = update_model(state, noisy_grad)
+    new_state = jax.block_until_ready(update_model(state, noisy_grad))
     batch_time = time.perf_counter() - start_time
     return new_state, logical_batch_size,batch_time
 
@@ -303,7 +303,7 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size,cpus,gpu
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
         pb =prepare_data(gpus,pb)
         yb =prepare_data(gpus,yb)
-        summed_grads_from_pb = compute_gradients_non_private(state, pb, yb, mask)
+        summed_grads_from_pb = jax.block_until_ready(compute_gradients_non_private(state, pb, yb, mask))
         
         accumulated_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_grads, 
@@ -314,7 +314,7 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size,cpus,gpu
     #print('acc grads device')
     #print_device(accumulated_grads)
     ### update
-    new_state = update_model(state, accumulated_grads)
+    new_state = jax.block_until_ready(update_model(state, accumulated_grads))
     batch_time = time.perf_counter() - start_time
     return new_state, logical_batch_size,batch_time
 
@@ -481,6 +481,10 @@ def prepare_data(device,batch):
 def print_device(x):
     print(f"Device: {x.device()}")
 
+def seed_worker(worker_id):
+
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
 
 def main(args):
     print(args,flush=True)
@@ -521,8 +525,8 @@ def main(args):
     fbs = FixedBatchsizeSampler(num_samples_total=n, batch_size=max_logical_batch_size, steps=steps)
 
     #dataset = CustomImageDataset(train_images, train_labels)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_sampler=fbs,collate_fn=numpy_collate)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=80, shuffle=False,collate_fn=numpy_collate)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_sampler=fbs,collate_fn=numpy_collate,num_workers=args.n_workers,worker_init_fn=seed_worker)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=80, shuffle=False,collate_fn=numpy_collate,num_workers=args.n_workers,worker_init_fn=seed_worker)
 
     clipping_mode = args.clipping_mode
 
