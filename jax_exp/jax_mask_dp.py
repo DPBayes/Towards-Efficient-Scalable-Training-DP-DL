@@ -103,6 +103,7 @@ def create_train_state(rng, lr,model,params):
     tx = optax.adam(lr)
     return train_state.TrainState.create(apply_fn=model.apply, params=params, tx=tx)
 
+@jax.jit
 def process_a_physical_batch(px_grads, mask, C):
 
     def clip_mask_and_sum(x, mask, clipping_multiplier):
