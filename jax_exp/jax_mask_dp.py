@@ -35,6 +35,8 @@ from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
 
 from jax.profiler import start_trace, stop_trace
 
+from jax._src.lib import xla_client
+
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
@@ -551,7 +553,7 @@ def main(args):
         #batch_y = jnp.array(batch_y)
         #print(type(batch_X))
         #print(jax.device_put(batch_X).device_buffer.device()) 
-        #start_trace('./tmp/jax-trace',create_perfetto_trace=True)
+        start_trace(f'./tmp/jax-trace/{clipping_mode}',create_perfetto_trace=True)
 
         if clipping_mode == 'non-private':
             #batch_X = jnp.array(batch_X)
@@ -573,8 +575,9 @@ def main(args):
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
-        #stop_trace()
+        stop_trace()
         del batch_X,batch_y
+        xla_client._xla.collect_garbage()
         acc = eval_model(testloader,state)
         t = t+1
         samples += actual_batch_size
