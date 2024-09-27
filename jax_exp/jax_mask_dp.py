@@ -405,7 +405,8 @@ def load_model(rng,model_name,dimension,num_classes):
 
         main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
         #Initialize the model
-        variables = model.init({'params':init_rng},x)
+        #variables = model.init({'params':init_rng},x)
+        variables = jax.jit(model.init)({'params':init_rng},x)
         #variables = model.init({'params':main_key}, batch)
         model.apply(variables, x)
         model = model
@@ -430,7 +431,8 @@ def load_model(rng,model_name,dimension,num_classes):
 
         main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
         #Initialize the model
-        variables = model.init({'params':init_rng},x)
+        variables = jax.jit(model.init)({'params':init_rng},x)
+        #variables = model.init({'params':init_rng},x)
 
         #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
         params = variables['params']
