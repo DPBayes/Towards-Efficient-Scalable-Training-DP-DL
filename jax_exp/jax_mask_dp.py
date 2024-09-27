@@ -53,7 +53,7 @@ def compute_per_example_gradients(state, batch_X, batch_y):
   
     return px_grads
 
-
+@jax.jit
 def compute_gradients_non_private(state, batch_X, batch_y, mask):
     """Computes gradients, loss and accuracy for a single batch."""
 
@@ -154,9 +154,6 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
         return updates
 
     ### gradient accumulation
-    total_iter = 0
-    correct_iter = 0
-
     accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
     start_time = time.perf_counter()
     for pb, yb, mask in zip(physical_batches, physical_labels, masks):
@@ -174,7 +171,7 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
     ### update
     new_state = update_model(state, noisy_grad)
     batch_time = time.perf_counter() - start_time
-    return new_state, noisy_grad, logical_batch_size,batch_time
+    return new_state, logical_batch_size,batch_time
 
 def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
     params = state.params
@@ -234,7 +231,7 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     ### update
     new_state = update_model(state, noisy_grad)
     batch_time = time.perf_counter() - start_time
-    return new_state, noisy_grad, actual_batch_size,batch_time
+    return new_state, actual_batch_size,batch_time
 
 def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_size,cpus,gpus):
     params = state.params
@@ -278,7 +275,7 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     ### update
     new_state = update_model(state, accumulated_grads)
     batch_time = time.perf_counter() - start_time
-    return new_state, accumulated_grads, actual_batch_size,batch_time
+    return new_state, actual_batch_size,batch_time
 
 
 def non_private_iteration(logical_batch, state, k, q, t, full_data_size,cpus,gpus):
@@ -318,7 +315,7 @@ def non_private_iteration(logical_batch, state, k, q, t, full_data_size,cpus,gpu
     ### update
     new_state = update_model(state, accumulated_grads)
     batch_time = time.perf_counter() - start_time
-    return new_state, accumulated_grads, logical_batch_size,batch_time
+    return new_state, logical_batch_size,batch_time
 
 class FixedBatchsizeSampler(Sampler[List[int]]):
 
@@ -558,20 +555,20 @@ def main(args):
         if clipping_mode == 'non-private':
             #batch_X = jnp.array(batch_X)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
-            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
+            state, actual_batch_size,batch_time = non_private_iteration((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
         elif clipping_mode == 'private':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
-            state, noisy_grad, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
+            state, actual_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
         elif clipping_mode == 'non-private-fori':
             #batch_X = jnp.array(batch_X)
-            state, non_private_grad, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
+            state, actual_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
         elif clipping_mode == 'private-fori':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-            state, noisy_grad, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
+            state, actual_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
