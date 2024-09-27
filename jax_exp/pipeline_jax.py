@@ -1034,12 +1034,12 @@ class TrainerModule:
     def non_private_training_mini_batch_clean(self,trainloader,testloader):
 
         #Training
-        print('Non private learning')
+        print('Non private learning virtual')
         
         #self.calculate_noise(len(trainloader))
         self.init_non_optimizer()
         print('self optimizer',self.optimizer)
-        print('self opt state',self.opt_state)
+        #print('self opt state',self.opt_state)
         #print('noise multiplier',self.noise_multiplier)
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
@@ -1435,9 +1435,9 @@ class TrainerModule:
 
         print('finish loading',flush=True)
         print('model loaded')
-        print(jax.tree_util.tree_map(jnp.shape, self.params))
+        #print(jax.tree_util.tree_map(jnp.shape, self.params))
         self.print_param_shapes(params)
-        self.print_param_values(params)
+        #self.print_param_values(params)
         return main_rng
         
     def __str__(self) -> str:
