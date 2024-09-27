@@ -5,8 +5,16 @@ import tensorflow as tf
 tf.config.experimental.set_visible_devices([], 'GPU')
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".65"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".75"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
+
+os.environ['XLA_FLAGS'] = (
+    '--xla_gpu_enable_triton_softmax_fusion=true '
+    '--xla_gpu_triton_gemm_any=True '
+    '--xla_gpu_enable_async_collectives=true '
+    '--xla_gpu_enable_latency_hiding_scheduler=true '
+    '--xla_gpu_enable_highest_priority_async_stream=true '
+)
 
 import jax
 import optax
