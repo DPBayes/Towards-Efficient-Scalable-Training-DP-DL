@@ -53,7 +53,7 @@ def compute_per_example_gradients(state, batch_X, batch_y):
         logits = state.apply_fn({'params': params}, X)
         one_hot = jax.nn.one_hot(y, 100)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
-        assert len(loss) == 1
+        #assert len(loss) == 1
         return loss.sum()
     
     grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
@@ -188,17 +188,17 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     sampling_rng = jax.random.PRNGKey(t + 1)
     batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
 
-    x, y = logical_batch
-    x,y= prepare_data(gpus,x),prepare_data(gpus,y)
+    #x, y = logical_batch
+    x,y= prepare_data(gpus,logical_batch[0]),prepare_data(gpus,logical_batch[1])
 
     logical_batch_size = len(x)
-    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
-    physical_labels = np.array(np.split(y, k))
+    #physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    #physical_labels = np.array(np.split(y, k))
     # poisson subsample
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
-    masks = jnp.array(jnp.split(masks, k))
+    #masks = jnp.array(jnp.split(masks, k))
 
     @jax.jit
     def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
@@ -214,15 +214,18 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
         return updates
 
     ### gradient accumulation
-    physical_batches =prepare_data(gpus,physical_batches)
-    physical_labels =prepare_data(gpus,physical_labels)
+    #x =prepare_data(gpus,x)
+    #y =prepare_data(gpus,y)
     #@jax.jit
     def body_fun(t, accumulated_clipped_grads):
-        pb = physical_batches[t]
-        yb = physical_labels[t]
-        mask = masks[t]
-        per_example_gradients = compute_per_example_gradients(state, pb, yb)
-        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
+        # pb = physical_batches[t]
+        # yb = physical_labels[t]
+        # mask = masks[t]
+        
+        per_example_gradients = compute_per_example_gradients(state, x[t*k:(t+1)*k], y[t*k:(t+1)*k])
+        
+        #per_example_gradients = compute_per_example_gradients(state, pb, yb)
+        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, masks[t*k:(t+1)*k], C)
         accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_clipped_grads, 
                                                 sum_of_clipped_grads_from_pb
@@ -234,7 +237,7 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
 
     start_time = time.perf_counter()
 
-    accumulated_clipped_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_clipped_grads0)
+    accumulated_clipped_grads = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun, accumulated_clipped_grads0))
 
     noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C)
 
@@ -249,26 +252,23 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     sampling_rng = jax.random.PRNGKey(t + 1)
     batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
 
-    x, y = logical_batch
-    x,y= prepare_data(gpus,x),prepare_data(gpus,y)
+    #x, y = logical_batch
+    x,y= prepare_data(gpus,logical_batch[0]),prepare_data(gpus,logical_batch[0])
     logical_batch_size = len(x)
-    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
-    physical_labels = np.array(np.split(y, k))
+    #physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    #physical_labels = np.array(np.split(y, k))
     # poisson subsample
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
-    masks = jnp.array(jnp.split(masks, k))
+    #masks = jnp.array(jnp.split(masks, k))
 
     ### gradient accumulation
-    physical_batches =prepare_data(gpus,physical_batches)
-    physical_labels =prepare_data(gpus,physical_labels)
+    #x = prepare_data(gpus,x)
+    #y = prepare_data(gpus,y)
     #@jax.jit
     def body_fun(t, accumulated_grads):
-        pb = physical_batches[t]
-        yb = physical_labels[t]
-        mask = masks[t]
-        summed_grads_from_pb = compute_gradients_non_private(state, pb, yb, mask)
+        summed_grads_from_pb = compute_gradients_non_private(state, x[t*k:(t+1)*k], y[t*k:(t+1)*k], masks[t*k:(t+1)*k])
         
         accumulated_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_grads, 
@@ -280,7 +280,7 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     accumulated_grads0 = jax.tree_map(lambda x: 0. * x, params)
 
     start_time = time.perf_counter()
-    accumulated_grads = jax.lax.fori_loop(0, k, body_fun, accumulated_grads0)
+    accumulated_grads = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun, accumulated_grads0))
 
 
     ### update
