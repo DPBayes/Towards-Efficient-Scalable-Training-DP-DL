@@ -268,7 +268,14 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     #y = prepare_data(gpus,y)
     #@jax.jit
     def body_fun(t, accumulated_grads):
-        summed_grads_from_pb = compute_gradients_non_private(state, x[t*k:(t+1)*k], y[t*k:(t+1)*k], masks[t*k:(t+1)*k])
+
+        start_idx = t * k
+        #end_idx = (t + 1) * k
+        x_slice = jax.lax.dynamic_slice(x, (start_idx,), (k,))
+        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (k,))
+        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (k,))
+
+        summed_grads_from_pb = compute_gradients_non_private(state, x_slice,y_slice, masks_slice)
         
         accumulated_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_grads, 
@@ -277,7 +284,7 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
         return accumulated_grads
 
     
-    accumulated_grads0 = jax.tree_map(lambda x: 0. * x, params)
+    accumulated_grads0 = jax.tree_map(lambda x: jnp.zeros_like(x), params)
 
     start_time = time.perf_counter()
     accumulated_grads = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun, accumulated_grads0))
