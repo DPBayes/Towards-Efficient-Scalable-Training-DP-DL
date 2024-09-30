@@ -253,7 +253,7 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
 
     #x, y = logical_batch
-    x,y= prepare_data(gpus,logical_batch[0]),prepare_data(gpus,logical_batch[0])
+    x,y= prepare_data(gpus,logical_batch[0]),prepare_data(gpus,logical_batch[1])
     logical_batch_size = len(x)
     #physical_batches = np.array(np.split(x, k)) # k x pbs x dim
     #physical_labels = np.array(np.split(y, k))
