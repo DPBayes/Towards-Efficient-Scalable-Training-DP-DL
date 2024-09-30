@@ -61,6 +61,21 @@ def compute_per_example_gradients(state, batch_X, batch_y):
   
     return px_grads
 
+def compute_per_example_gradients_unjit(state, batch_X, batch_y):
+    """Computes gradients, loss and accuracy for a single batch."""
+
+    def loss_fn(params, X, y):
+        logits = state.apply_fn({'params': params}, X)
+        one_hot = jax.nn.one_hot(y, 100)
+        loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
+        #assert len(loss) == 1
+        return loss.sum()
+    
+    grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
+    px_grads = jax.vmap(grad_fn, in_axes=(0, 0))(batch_X, batch_y)
+  
+    return px_grads
+
 @jax.jit
 def compute_gradients_non_private(state, batch_X, batch_y, mask):
     """Computes gradients, loss and accuracy for a single batch."""
@@ -131,7 +146,7 @@ def process_a_physical_batch(px_grads, mask, C):
 
     return jax.tree_map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
 
-def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
+def private_iteration(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
@@ -169,6 +184,58 @@ def private_iteration_v2(logical_batch, state, k, q, t, noise_std, C, full_data_
         pb =prepare_data(gpus,pb)
         yb =prepare_data(gpus,yb)
         per_example_gradients = jax.block_until_ready(compute_per_example_gradients(state, pb, yb))
+        sum_of_clipped_grads_from_pb = jax.block_until_ready(process_a_physical_batch(per_example_gradients, mask, C))
+        accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
+                                                accumulated_clipped_grads, 
+                                                sum_of_clipped_grads_from_pb
+                                                )
+
+    noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C)
+
+    ### update
+    new_state = jax.block_until_ready(update_model(state, noisy_grad))
+    batch_time = time.perf_counter() - start_time
+    return new_state, actual_batch_size,logical_batch_size,batch_time
+
+
+def private_iteration_unjit(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
+    params = state.params
+    
+    sampling_rng = jax.random.PRNGKey(t + 1)
+    batch_rng, binomial_rng = jax.random.split(sampling_rng, 2) 
+
+    x, y = logical_batch
+
+    logical_batch_size = len(x)
+    physical_batches = np.array(np.split(x, k)) # k x pbs x dim
+    physical_labels = np.array(np.split(y, k))
+    # poisson subsample
+    actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
+    n_masked_elements = logical_batch_size - actual_batch_size
+    masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
+
+    masks = jnp.array(jnp.split(masks, k))
+
+    @jax.jit
+    def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
+        num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
+        treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
+        new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
+        noise = jax.tree_util.tree_map(
+            lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+            accumulated_clipped_grads, jax.tree_util.tree_unflatten(treedef, all_keys))
+        updates = jax.tree_util.tree_map(
+            lambda g, n: g + noise_std * C * n,
+            accumulated_clipped_grads, noise)
+        return updates
+
+    ### gradient accumulation
+    accumulated_clipped_grads = jax.tree_map(lambda x: 0. * x, params)
+    start_time = time.perf_counter()
+    for pb, yb, mask in zip(physical_batches, physical_labels, masks):
+        pb =prepare_data(gpus,pb)
+        yb =prepare_data(gpus,yb)
+        per_example_gradients = jax.block_until_ready(compute_per_example_gradients_unjit(state, pb, yb))
         sum_of_clipped_grads_from_pb = jax.block_until_ready(process_a_physical_batch(per_example_gradients, mask, C))
         accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_clipped_grads, 
@@ -589,7 +656,14 @@ def main(args):
         elif clipping_mode == 'private':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
             #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
-            state, actual_batch_size,logical_batch_size,batch_time = private_iteration_v2((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
+            state, actual_batch_size,logical_batch_size,batch_time = private_iteration((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
+            epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
+            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+            print(privacy_results,flush=True)
+        elif clipping_mode == 'private-unjit':
+            batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
+            #jax.profiler.save_device_memory_profile(f"./tmp/memory{t}.prof")
+            state, actual_batch_size,logical_batch_size,batch_time = private_iteration_unjit((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
