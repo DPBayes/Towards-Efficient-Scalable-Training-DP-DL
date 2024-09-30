@@ -221,11 +221,17 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
         # pb = physical_batches[t]
         # yb = physical_labels[t]
         # mask = masks[t]
-        
-        per_example_gradients = compute_per_example_gradients(state, x[t*k:(t+1)*k], y[t*k:(t+1)*k])
+        start_idx = t * k
+        #end_idx = (t + 1) * k
+        x_slice = jax.lax.dynamic_slice(x, (0,start_idx,0,0,0), (1,k,3,224,224))
+        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (k,))
+        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (k,))
+
+        per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
+        #per_example_gradients = compute_per_example_gradients(state, x[t*k:(t+1)*k], y[t*k:(t+1)*k])
         
         #per_example_gradients = compute_per_example_gradients(state, pb, yb)
-        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, masks[t*k:(t+1)*k], C)
+        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
         accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
                                                 accumulated_clipped_grads, 
                                                 sum_of_clipped_grads_from_pb
