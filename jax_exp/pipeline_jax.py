@@ -4,17 +4,19 @@ import tensorflow as tf
 tf.config.experimental.set_visible_devices([], 'GPU')
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".65"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".75"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
 
-#import pdb
-#import itertools
+os.environ['XLA_FLAGS'] = (
+    '--xla_gpu_enable_triton_softmax_fusion=true '
+    '--xla_gpu_triton_gemm_any=True '
+    '--xla_gpu_enable_async_collectives=true '
+    '--xla_gpu_enable_latency_hiding_scheduler=true '
+    '--xla_gpu_enable_highest_priority_async_stream=true '
+)
+
 from datetime import datetime
 import warnings
-#from collections import defaultdict
-#import argparse
-
-#from typing import Sequence
 import functools
 
 import re
@@ -24,13 +26,10 @@ import numpy as np
 import jax
 from jax import jit
 import jax.numpy as jnp
-#from jax.nn import log_softmax
 import jax.profiler
 
 #Flax
 import flax.linen as nn
-#from flax import jax_utils
-#from flax.training import train_state
 from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
 
 #Optimizer library for JAX. From it we got the dpsgd optimizer
@@ -48,7 +47,6 @@ import torch.utils.data as data
 import torch.backends.cudnn
 
 #Import the modules of the models. For the ResNet models, they came from the private_resnet file
-#from private_resnet import FlaxResNetModelClassifier,ResNetModelHeadModule
 from transformers import FlaxViTModel,FlaxViTForImageClassification
 from private_vit import ViTModelHead
 from functools import partial
@@ -68,7 +66,6 @@ from nvitop import CudaDevice,ResourceMetricCollector
 import models_flax
 import time
 from MyOwnBatchManager import MyBatchMemoryManager,EndingLogicalBatchSignal
-from transform_functions import add_noise,AddNoiseStateC
 
 def transform_params(params, params_tf, num_classes):
     # BiT and JAX models have different naming conventions, so we need to
@@ -175,60 +172,9 @@ class TrainerModule:
 
         self.noise_multiplier = noise_multiplier
     
-    def init_non_optimizer(self):
+    def init_optimizer(self):
         self.optimizer = optax.adam(learning_rate=self.lr)
         self.opt_state = self.optimizer.init(self.params)
-
-    def init_with_chain(self,size,sample_rate):
-        print('init optimizer, size ',size)
-
-        expected_bs = (size * sample_rate)
-
-        total_steps = int(size//expected_bs)
-        print('total steps',total_steps)
-
-        expected_acc_steps = expected_bs // self.physical_bs
-
-        print('expected acc steps',expected_acc_steps)
-
-        optimizer = optax.chain(
-            add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
-            optax.adam(learning_rate=self.lr)
-        )
-        
-        self.optimizer = optax.MultiSteps(optimizer,every_k_schedule=int(expected_acc_steps),use_grad_mean=False)
-
-        self.opt_state  = self.optimizer.init(self.params)
-
-        #print('self opt after init',self.opt_state)
-
-    def init_with_chain2(self,size,sample_rate):
-        print('init optimizer, size ',size)
-
-        expected_bs = (size * sample_rate)
-
-        #total_steps = int(size//expected_bs)
-        #print('total steps',total_steps)
-
-        #expected_acc_steps = expected_bs // self.physical_bs
-
-        print('expected batch size',expected_bs)
-
-        print('noise multiplier',self.noise_multiplier,'max grad norm',self.max_grad_norm,'noise',self.noise_multiplier*self.max_grad_norm)
-
-        #noise_state = AddNoiseStateC(self.seed)
-
-        self.optimizer = optax.chain(
-            add_noise(self.noise_multiplier*self.max_grad_norm,expected_bs,self.seed),
-            optax.adam(learning_rate=self.lr)
-        )
-        
-        #self.optimizer = optax.MultiSteps(optimizer,every_k_schedule=int(expected_acc_steps),use_grad_mean=False)
-
-        self.opt_state  = self.optimizer.init(self.params)
-
-        #print('self opt after init',self.opt_state)
-        
     
     def calculate_metrics(self,params,batch):
         inputs,targets = batch
@@ -253,30 +199,20 @@ class TrainerModule:
     def loss_eval(self,params,batch):
         inputs,targets = batch
         logits = self.model.apply({'params':params},inputs)
-        #print('logits shape',logits.shape)
         predicted_class = jnp.argmax(logits,axis=-1)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
-        #print('cross_losses:',cross_losses.shape)
-        
 
         cross_loss = jnp.mean(cross_losses)
-        #vals = (predicted_class > 0.5) == (targets > 0.5) 
         vals = predicted_class == targets
         acc = jnp.mean(vals)
         cor = jnp.sum(vals)
-        #print('targets',targets)
-        #print('predicted class',predicted_class)
-
-        #jax.debug.breakpoint()
 
         return cross_loss,acc,cor
     
     #@partial(jit,static_argnums=0)
     def eval_step_non(self, params, batch):
         # Return the accuracy for a single batch
-        #batch = jax.tree_map(lambda x: x[:, None], batch)
         loss,acc,cor =self.loss_eval(params,batch)
-        #loss, acc= self.loss_2(self.params, batch)
         return loss, acc,cor
     
     @partial(jit, static_argnums=0)
@@ -316,11 +252,9 @@ class TrainerModule:
     @partial(jit,static_argnums=0)
     def add_noise_fn(self,noise_std,rng_key,updates):
         
-        #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
         num_vars = len(jax.tree_util.tree_leaves(updates))
         treedef = jax.tree_util.tree_structure(updates)
         new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-        #print('num_vars',num_vars,flush=True)
         noise = jax.tree_util.tree_map(
             lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
             updates, jax.tree_util.tree_unflatten(treedef, all_keys))
@@ -330,201 +264,8 @@ class TrainerModule:
 
         return updates, new_key
         
-    def private_training_mini_batch_2(self,trainloader,testloader):
-
-        #Training
-        print('private learning',flush=True)
-        
-        _acc_update = lambda grad, acc : grad + acc
-
-        self.calculate_noise(len(trainloader))
-        #self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
-        self.init_non_optimizer()
-        print('noise multiplier',self.noise_multiplier)
-        throughputs = np.zeros(self.epochs)
-        throughputs_t = np.zeros(self.epochs)
-        expected_bs = len(trainloader.dataset)/len(trainloader)
-        expected_acc_steps = expected_bs // self.physical_bs
-        print('expected accumulation steps',expected_acc_steps)
-        acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-        comp_time = 0
-        gradient_step_ac = 0
-        for epoch in range(1,self.epochs+1):
-            flag = EndingLogicalBatchSignal()
-            batch_idx = 0
-            metrics = {}
-            metrics['loss'] = np.array([])
-            metrics['acc'] = np.array([])
-            
-            total_time_epoch = 0
-            samples_used = 0 
-            start_time_epoch = time.time()
-            batch_times = []
-            sample_sizes = []
-
-            steps = int(epoch * expected_acc_steps)
-            
-            train_loss = 0
-            correct = 0
-            total = 0
-            total_batch = 0
-            correct_batch = 0
-            batch_idx = 0
-
-            print('steps',steps,flush=True)
-            with MyBatchMemoryManager(
-                data_loader=trainloader, 
-                max_physical_batch_size=self.physical_bs, 
-                signaler=flag
-                ) as memory_safe_data_loader:
-                print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler))
-                for batch_idx, batch in enumerate(memory_safe_data_loader): 
-                    with self.collector(tag='batch'):
-                        #print(batch[0][0].shape)
-                        samples_used += len(batch[0])
-                        sample_sizes.append(len(batch[0]))
-                        start_time = time.time()
-                        grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
-                        #print('num_clipped at',batch_idx,':',num_clipped)
-                        acc_grads = jax.tree_util.tree_map(
-                            functools.partial(_acc_update),
-                            grads, acc_grads)
-                        if not flag._check_skip_next_step():
-                            print('about to update:')
-                            
-                            updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,acc_grads)
-
-                            #old_params = self.params
-                            #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
-                            self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
-                            
-                            gradient_step_ac += 1
-                            print('batch_idx',batch_idx)
-                            print('flag queue',flag.skip_queue)
-                            print('count',gradient_step_ac)
-                            #self.print_param_change(old_params,self.params)
-                            acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-                            
-                            
-
-                        batch_time = time.time() - start_time
-
-                        train_loss += loss
-                        total_batch += len(batch[1])
-                        correct_batch += cor
-
-
-                        #add_scalar_dict(self.logger, #type: ignore
-                        #                'train_batch_memorystats',
-                        #                torch.cuda.memory_stats(),
-                        #                global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        #add_scalar_dict(self.logger, 
-                        #            'resources',      # tag='resources/train/batch/...'
-                        #            self.collector.collect(),
-                        #            global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-
-                        metrics['loss'] = jnp.append(metrics['loss'],float(loss))
-                        metrics['acc'] = jnp.append(metrics['acc'],(float(accu)))
-
-                        batch_times.append(batch_time)
-                        total_time_epoch += batch_time
-
-                    if batch_idx % 100 == 99 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                        
-                        avg_loss = float(jnp.mean(metrics['loss']))
-                        avg_acc = float(jnp.mean(metrics['acc']))
-                        total += total_batch
-                        correct += correct_batch
-                        
-                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
-                        print('(New)Loss values',train_loss)
-                        #avg_acc = 100.*(correct/total)
-                        #avg_loss = train_loss/total
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {avg_loss}')
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
-                        #print('Accuracy values',metrics['acc'])
-                        #print('Loss values',metrics['loss'])
-                        try:
-                            add_scalar_dict(self.logger,
-                                        f'train_batch_stats',
-                                        {'acc':float(100.*correct/total),
-                                         'loss':avg_loss}
-                                         ,global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        except Exception:
-                            print('what is happening')
-                        print('Update metrics')
-                        metrics['loss'] = np.array([])
-                        metrics['acc'] = np.array([])
-                        add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        
-                        total_batch = 0
-                        correct_batch = 0
-                        
-                        eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                        #eval_loss, eval_acc = self.eval_model(testloader)
-                        print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
-
-                        add_scalar_dict(self.logger,
-                                        'test_accuracy_dtrain',
-                                        {'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},
-                                        global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-
-
-            print('-------------End Epoch---------------',flush=True)
-            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
-            print('steps',steps,'gradient acc steps',gradient_step_ac,flush=True)
-            print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total),flush=True)
-
-            if epoch == 1:
-                print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
-
-            epoch_time = time.time() - start_time_epoch
-            eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-            #eval_loss, eval_acc = self.eval_model(testloader)
-            print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
-
-            add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss),'accuracy train':float(100.*correct/total),'loss train':float(train_loss)},global_step=epoch)
-
-            epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
-            
-            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-            add_scalar_dict(self.logger,'train_epoch_privacy',privacy_results,global_step=epoch)
-            print('privacy results',privacy_results)
-
-            throughput_t = (samples_used)/epoch_time
-            throughput = (samples_used)/total_time_epoch
-            print('total time epoch - epoch time',np.abs(total_time_epoch - epoch_time),'total time epoch',total_time_epoch,'epoch time',epoch_time)
-            init_v = sample_sizes[0]
-            for i in range(len(sample_sizes)):
-                if sample_sizes[i] != init_v:
-                    if i != 0:
-                        print('before',sample_sizes[i-1],batch_times[i-1])
-                    print('after',sample_sizes[i],batch_times[i])
-                    init_v = sample_sizes[i]
-            print('End of Epoch ', ' number of batches ',len(sample_sizes),np.column_stack((sample_sizes,batch_times)))
-
-            if epoch == 1:
-                throughput_wout_comp = (samples_used - self.physical_bs)/(total_time_epoch - batch_times[0])
-                throughput_wout_t_comp = (samples_used - self.physical_bs)/(epoch_time - batch_times[0])
-                print('throughput',throughput,'throughput minus the first time',throughput_wout_comp)
-                throughput = throughput_wout_comp
-                throughput_t = throughput_wout_t_comp
-            throughputs[epoch-1] = throughput
-            throughputs_t[epoch-1] = throughput_t
-            if epoch == 1:
-                comp_time = batch_times[0]
-            print('Epoch {} Total time {} Throughput {} Samples Used {}'.format(epoch,total_time_epoch,throughput,samples_used),flush=True)  
-        
-        
-        epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
-        
-        privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-        print('privacy results',privacy_results,flush=True)
-        print('Finish training',flush=True)
-        return throughputs,throughputs_t,comp_time,privacy_results
     
-    def private_training_mini_batch_clean(self,trainloader,testloader):
+    def private_training_mini_batch(self,trainloader,testloader):
 
         #Training
         print('private learning',flush=True)
@@ -532,9 +273,7 @@ class TrainerModule:
         _acc_update = lambda grad, acc : grad + acc
 
         self.calculate_noise(len(trainloader))
-        #self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
-        self.init_non_optimizer()
-        #print('noise multiplier',self.noise_multiplier)
+        self.init_optimizer()
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
         expected_bs = len(trainloader.dataset)/len(trainloader)
@@ -544,11 +283,9 @@ class TrainerModule:
         @jit
         def add_noise_fn(noise_std,rng_key,updates):
             
-            #jax.debug.print('inside update function:',noise_std,'expected_bs',expected_bs,'PRNG key',rng_key,flush=True)
             num_vars = len(jax.tree_util.tree_leaves(updates))
             treedef = jax.tree_util.tree_structure(updates)
             new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-            #print('num_vars',num_vars,flush=True)
             noise = jax.tree_util.tree_map(
                 lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
                 updates, jax.tree_util.tree_unflatten(treedef, all_keys))
@@ -586,47 +323,31 @@ class TrainerModule:
 
             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
-            #print('steps',steps,flush=True)
             with MyBatchMemoryManager(
                 data_loader=trainloader, 
                 max_physical_batch_size=self.physical_bs, 
                 signaler=flag
                 ) as memory_safe_data_loader:
-                #print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler))
                 for batch_idx, batch in enumerate(memory_safe_data_loader): 
-                    #with self.collector(tag='batch'):
-                    #print(batch[0][0].shape)
                     samples_used += len(batch[0])
                     sample_sizes.append(len(batch[0]))
                     start_time = time.perf_counter()
                     grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
-                    #print('num_clipped at',batch_idx,':',num_clipped)
-
-                    acc_grads = jax.tree_map(lambda x,y: x+y, 
-                                                grads, 
-                                                acc_grads
-                                                )
-                    # acc_grads = jax.tree_util.tree_map(
-                    #     functools.partial(_acc_update),
-                    #     grads, acc_grads)
+                    acc_grads = add_trees(grads,acc_grads)
+                    # acc_grads = jax.tree_map(lambda x,y: x+y, 
+                    #                             grads, 
+                    #                             acc_grads
+                    #                             )
                     accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
                         updates,self.rng = add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,acc_grads)
 
-                        # updates = jax.tree_util.tree_map(
-                        #     lambda x: x/expected_bs*accumulated_iterations,
-                        #     updates)
-
-                        #old_params = self.params
-                        #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
                         
                         gradient_step_ac += 1
                         print('batch_idx',batch_idx)
-                        #print('flag queue',flag.skip_queue)
                         print('count',gradient_step_ac)
-                        #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                         accumulated_iterations = 0
                     batch_time = time.perf_counter() - start_time
@@ -661,7 +382,6 @@ class TrainerModule:
                         correct_batch = 0
                         
                         eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                        #eval_loss, eval_acc = self.eval_model(testloader)
                         print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
             print('-------------End Epoch---------------',flush=True)
@@ -675,13 +395,11 @@ class TrainerModule:
 
             epoch_time = time.time() - start_time_epoch
             eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-            #eval_loss, eval_acc = self.eval_model(testloader)
             print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
             epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
             
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-            #add_scalar_dict(self.logger,'train_epoch_privacy',privacy_results,global_step=epoch)
             print('privacy results',privacy_results)
 
             throughput_t = (samples_used)/epoch_time
@@ -699,7 +417,6 @@ class TrainerModule:
             if epoch == 1:
                 throughput_wout_comp = (samples_used - self.physical_bs)/(total_time_epoch - batch_times[0])
                 throughput_wout_t_comp = (samples_used - self.physical_bs)/(epoch_time - batch_times[0])
-                #print('throughput',throughput,'throughput minus the first time',throughput_wout_comp)
                 throughput = throughput_wout_comp
                 throughput_t = throughput_wout_t_comp
             throughputs[epoch-1] = throughput
@@ -716,17 +433,13 @@ class TrainerModule:
         print('Finish training',flush=True)
         return throughputs,throughputs_t,comp_time,privacy_results
 
-    def private_training_clean(self,trainloader,testloader):
+    def private_training(self,trainloader,testloader):
 
         #Training
         print('private learning',flush=True)
         
-        #_acc_update = lambda grad, acc : grad + acc
-
         self.calculate_noise(len(trainloader))
-        #self.init_with_chain2(len(trainloader.dataset),1/len(trainloader))
-        self.init_non_optimizer()
-        #print('noise multiplier',self.noise_multiplier)
+        self.init_optimizer()
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
         expected_bs = len(trainloader.dataset)/len(trainloader)
@@ -736,7 +449,6 @@ class TrainerModule:
         comp_time = 0
         gradient_step_ac = 0
         for epoch in range(1,self.epochs+1):
-            flag = EndingLogicalBatchSignal()
             batch_idx = 0
             metrics = {}
             metrics['loss'] = np.array([])
@@ -864,180 +576,14 @@ class TrainerModule:
         print('privacy results',privacy_results,flush=True)
         print('Finish training',flush=True)
         return throughputs,throughputs_t,comp_time,privacy_results
-    
 
-    def non_private_training_mini_batch_2(self,trainloader,testloader):
-
-        #Training
-        print('Non private learning')
-        
-        #self.calculate_noise(len(trainloader))
-        self.init_non_optimizer()
-        #print('noise multiplier',self.noise_multiplier)
-        throughputs = np.zeros(self.epochs)
-        throughputs_t = np.zeros(self.epochs)
-        expected_bs = len(trainloader.dataset)/len(trainloader)
-        expected_acc_steps = expected_bs // self.physical_bs
-        print('expected accumulation steps',expected_acc_steps,'len dataloader',len(trainloader),'expected_bs',expected_bs)
-        _acc_update = lambda grad, acc : grad + acc / expected_acc_steps
-
-        acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-        comp_time = 0
-        gradient_step_ac = 0
-        for epoch in range(1,self.epochs+1):
-            flag = EndingLogicalBatchSignal()
-            batch_idx = 0
-            metrics = {}
-            metrics['loss'] = jnp.array([])
-            metrics['acc'] = jnp.array([])
-            
-            total_time_epoch = 0
-            samples_used = 0 
-            start_time_epoch = time.time()
-            batch_times = []
-
-            steps = int(epoch * expected_acc_steps)
-            
-            train_loss = 0
-            correct = 0
-            total = 0
-            total_batch = 0
-            correct_batch = 0
-            batch_idx = 0
-            
-            times_up = 0
-
-            print('steps',steps,flush=True)
-            with MyBatchMemoryManager(
-                data_loader=trainloader, 
-                max_physical_batch_size=self.physical_bs, 
-                signaler=flag
-                ) as memory_safe_data_loader:
-                print('memory safe data loader len ',len(memory_safe_data_loader.batch_sampler),flush=True)
-                for batch_idx, batch in enumerate(memory_safe_data_loader): 
-                    with self.collector(tag='batch'):
-                        samples_used += len(batch[0])
-                        #print(samples_used)
-                        start_time = time.time()
-                        grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
-                        acc_grads = jax.tree_util.tree_map(
-                            functools.partial(_acc_update),
-                            grads, acc_grads)
-                        if not flag._check_skip_next_step():
-                            print('about to update:')
-                            #old_params = self.params
-                            self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
-                            gradient_step_ac += 1
-                            print('flag queue',flag.skip_queue)
-                            #print('here the step should be taken, the opt state:',self.opt_state.gradient_step,'count',gradient_step_ac)
-                            print('batch_idx',batch_idx)
-                            #self.print_param_change(old_params,self.params)
-                            acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-                            times_up += 1
-                                                        
-                        batch_time = time.time() - start_time
-                        
-                        train_loss += loss / expected_acc_steps
-                        total_batch += len(batch[1])
-                        correct_batch += cor
-                        
-
-                        #add_scalar_dict(self.logger, #type: ignore
-                        #                'train_batch_memorystats',
-                        #                torch.cuda.memory_stats(),
-                        #                global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        #add_scalar_dict(self.logger, 
-                        #            'resources',      # tag='resources/train/batch/...'
-                        #            self.collector.collect(),
-                        #            global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        metrics['loss'] = jnp.append(metrics['loss'],float(loss))
-                        metrics['acc'] = jnp.append(metrics['acc'],(float(accu)))
-                        #batch_idx += 1
-                        batch_times.append(batch_time)
-                        total_time_epoch += batch_time
-
-                    if batch_idx % 100 == 99 or ((batch_idx + 1) == len(memory_safe_data_loader)):
-                        
-                        avg_loss = float(jnp.mean(metrics['loss']))
-                        avg_acc = float(jnp.mean(metrics['acc']))
-                        total += total_batch
-                        correct += correct_batch
-                        new_loss = train_loss/len(metrics['loss'])
-                        print('(New)Accuracy values',100.*(correct_batch/total_batch))
-                        print('(New)Loss values',(new_loss))
-                        #avg_acc = 100.*(correct/total)
-                        #avg_loss = train_loss/total
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {avg_acc} loss: {new_loss}')
-                        print(f'Epoch {epoch} Batch idx {batch_idx + 1} acc: {100.*correct_batch/total_batch}')
-                        #print('Accuracy values',metrics['acc'])
-                        #print('Loss values',metrics['loss'])
-                        try:
-                            add_scalar_dict(self.logger,
-                                        f'train_batch_stats',
-                                        {'acc':float(100.*correct/total),
-                                         'loss':avg_loss}
-                                         ,global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        except Exception:
-                            print('what is happening')
-                        print('Update metrics')
-                        metrics['loss'] = np.array([])
-                        metrics['acc'] = np.array([])
-                        add_scalar_dict(self.logger,f'time batch',{f'batch time':batch_time},global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-
-                        eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                        #eval_loss, eval_acc = self.eval_model(testloader)
-                        print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
-
-                        add_scalar_dict(self.logger,
-                                        'test_accuracy_dtrain',
-                                        {'accuracy eval':float(eval_acc),'loss eval':float(eval_loss)},
-                                        global_step=len(memory_safe_data_loader)*epoch + batch_idx)
-                        total_batch = 0
-                        correct_batch = 0
-            
-            print('-------------End Epoch---------------',flush=True)
-            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
-            print('steps',steps,'gradient acc steps',gradient_step_ac,'times updated',times_up,flush=True)
-            print('Epoch: ', epoch, len(trainloader), 'Train Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                            % (train_loss/(len(trainloader)), 100.*correct/total, correct, total),flush=True)
-            
-            if epoch == 1:
-                print('First Batch time \n',batch_times[0],'Second batch time',batch_times[1])
-
-            epoch_time = time.time() - start_time_epoch
-
-            print('Finish epoch',epoch,' batch_idx',batch_idx+1,'batch',len(batch),flush=True)
-
-            eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-            print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
-            add_scalar_dict(self.logger,'test_accuracy',{'accuracy eval':float(eval_acc),'loss eval':float(eval_loss),'accuracy train':float(100.*correct/total),'loss train':float(train_loss)},global_step=epoch)
-
-            throughput_t = (samples_used)/epoch_time
-            throughput = (samples_used)/total_time_epoch
-            print('total time epoch - epoch time',np.abs(total_time_epoch - epoch_time),'total time epoch',total_time_epoch,'epoch time',epoch_time)
-
-            if epoch == 1:
-                throughput_wout_comp = (samples_used - self.physical_bs)/(total_time_epoch - batch_times[0])
-                throughput_wout_t_comp = (samples_used - self.physical_bs)/(epoch_time - batch_times[0])
-                print('throughput',throughput,'throughput minus the first time',throughput_wout_comp)
-                throughput = throughput_wout_comp
-                throughput_t = throughput_wout_t_comp
-            throughputs[epoch-1] = throughput
-            throughputs_t[epoch-1] = throughput_t
-            if epoch == 1:
-                comp_time = batch_times[0]
-            print('Epoch {} Total time {} Throughput {} Samples Used {}'.format(epoch,total_time_epoch,throughput,samples_used),flush=True)  
-        
-        print('Finish training',flush=True)
-        return throughputs,throughputs_t,comp_time
-
-    def non_private_training_mini_batch_clean(self,trainloader,testloader):
+    def non_private_training_mini_batch(self,trainloader,testloader):
 
         #Training
         print('Non private learning virtual')
         
         #self.calculate_noise(len(trainloader))
-        self.init_non_optimizer()
+        self.init_optimizer()
         print('self optimizer',self.optimizer)
         #print('self opt state',self.opt_state)
         #print('noise multiplier',self.noise_multiplier)
@@ -1086,9 +632,11 @@ class TrainerModule:
                     #print(samples_used)
                     start_time = time.perf_counter()
                     grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
-                    acc_grads = jax.tree_util.tree_map(
-                        lambda x,y: x+y,
-                        grads, acc_grads)
+                    acc_grads = add_trees(grads,acc_grads)
+
+                    # acc_grads = jax.tree_util.tree_map(
+                    #     lambda x,y: x+y,
+                    #     grads, acc_grads)
                     accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
@@ -1175,13 +723,13 @@ class TrainerModule:
         print('Finish training',flush=True)
         return throughputs,throughputs_t,comp_time
     
-    def non_private_training_clean(self,trainloader,testloader):
+    def non_private_training(self,trainloader,testloader):
 
         #Training
         print('Non private learning')
         
         #self.calculate_noise(len(trainloader))
-        self.init_non_optimizer()
+        self.init_optimizer()
         print('self optimizer',self.optimizer)
         print('self opt state',self.opt_state)
         #print('noise multiplier',self.noise_multiplier)
@@ -1387,7 +935,7 @@ class TrainerModule:
 
             main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
             #Initialize the model
-            variables = model.init({'params':init_rng},x)
+            variables = jax.jit(model.init)({'params':init_rng},x)
 
             #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
             params = variables['params']
@@ -1435,7 +983,6 @@ class TrainerModule:
 
         print('finish loading',flush=True)
         print('model loaded')
-        #print(jax.tree_util.tree_map(jnp.shape, self.params))
         self.print_param_shapes(params)
         #self.print_param_values(params)
         return main_rng
@@ -1475,9 +1022,6 @@ def numpy_collate(batch):
         return [numpy_collate(samples) for samples in transposed]
     else:
         return np.array(batch)
-    
-def numpy_collate2(batch):
-  return jax.tree_util.tree_map(jnp.asarray, data.default_collate(batch))
     
 #Defines each worker seed. Since each worker needs a different seed.
 #The worker_id is a parameter given by the loader, but it is not used inside the method
@@ -1545,31 +1089,49 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
 def privatize_dataloader(data_loader):
     return DPDataLoader.from_data_loader(data_loader)
 
+@jax.jit
+def add_trees(x, y):
+    #Helper function, add two tree objects
+    return jax.tree_util.tree_map(lambda a, b: a + b, x, y)
+
+
+def test_grads(trainloader):
+
+
+
+
+
+    pass
+
+
 def main(args):
     print(args,flush=True)
     print('devices ',jax.devices(),flush=True)
     generator = set_seeds(args.seed)
+    
     #Load data
     trainloader,testloader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,args.n_workers,generator,args.normalization)
-    #if args.clipping_mode == 'mini':
-    #    trainloader = privatize_dataloader(trainloader)
+
     trainloader = privatize_dataloader(trainloader)
     print('data loaded',flush=True)
+    
     #Create Trainer Module, that loads the model and train it
     trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode)
+    
+    #Test initial model without training
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('Without trainig test loss',tloss)
     print('Without training test accuracy',tacc,'(',cor_eval,'/',tot_eval,')')
     
     if args.clipping_mode == 'non-private':
-        throughputs,throughputs_t,comp_time = trainer.non_private_training_clean(trainloader,testloader)
+        throughputs,throughputs_t,comp_time = trainer.non_private_training(trainloader,testloader)
     elif args.clipping_mode == 'non-private-virtual':
-        throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch_clean(trainloader,testloader)
+        throughputs,throughputs_t,comp_time = trainer.non_private_training_mini_batch(trainloader,testloader)
     elif args.clipping_mode == 'private-mini':
-        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch_clean(trainloader,testloader)
+        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_mini_batch(trainloader,testloader)
         print(privacy_measures)
     elif args.clipping_mode == 'private':
-        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training_clean(trainloader,testloader)
+        throughputs,throughputs_t,comp_time,privacy_measures = trainer.private_training(trainloader,testloader)
         print(privacy_measures)
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
     print('throughputs',throughputs,'mean throughput', np.mean(throughputs))
