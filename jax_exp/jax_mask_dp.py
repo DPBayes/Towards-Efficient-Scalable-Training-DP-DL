@@ -271,7 +271,7 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
 
         start_idx = t * k
         #end_idx = (t + 1) * k
-        x_slice = jax.lax.dynamic_slice(x, (start_idx,), (k,))
+        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0), (k,3,224,224))
         y_slice = jax.lax.dynamic_slice(y, (start_idx,), (k,))
         masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (k,))
 
