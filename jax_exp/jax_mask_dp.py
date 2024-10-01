@@ -314,7 +314,7 @@ def private_iteration_state(logical_batch, state, k, q, t, noise_std, C, full_da
 def body_fun_p(t, args):
     state, accumulated_grads, logical_batch_x,logical_batch_y,masks,C = args
     start_idx = t * PHYSICAL_BATCH
-    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (PHYSICAL_BATCH,3,224,224))
+    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0,0), (PHYSICAL_BATCH,1,3,224,224))
     y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (PHYSICAL_BATCH,))
     masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (PHYSICAL_BATCH,))
 
