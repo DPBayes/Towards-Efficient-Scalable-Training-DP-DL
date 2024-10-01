@@ -384,7 +384,7 @@ def private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, noise
 
     start_time = time.perf_counter()
 
-    _, accumulated_clipped_grads, *_  = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun_p, (state, accumulated_clipped_grads0, x,y,masks,jax.lax.convert_element_type(physical_bs, jnp.int32),jax.lax.convert_element_type(C, jnp.float32))))
+    _, accumulated_clipped_grads, *_  = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun_p, (state, accumulated_clipped_grads0, x,y,masks,jax.lax.convert_element_type(C, jnp.float32))))
 
     noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C)
 
