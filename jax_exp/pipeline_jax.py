@@ -950,7 +950,7 @@ class TrainerModule:
             model_name = self.model_name
             model = FlaxViTForImageClassification.from_pretrained(model_name, num_labels=self.num_classes, return_dict=False, ignore_mismatched_sizes=True)
             self.model = model
-            self.params = params
+            self.params = model.params
             #model = FlaxViTForImageClassification.from_pretrained(model_name)
             # model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
             # module = model.module # Extract the Flax Module
