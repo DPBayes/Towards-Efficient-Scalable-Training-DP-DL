@@ -103,6 +103,31 @@ def transform_params(params, params_tf, num_classes):
         (params['conv_head']['kernel'].shape[0], num_classes), dtype=np.float32)
     params['conv_head']['bias'] = np.zeros(num_classes, dtype=np.float32)
 
+@jit
+def mini_batch_dif_clip2(per_example_grads,l2_norm_clip):
+    
+    grads_flat, grads_treedef = jax.tree_util.tree_flatten(per_example_grads)
+
+    clipped, num_clipped = clipping.per_example_global_norm_clip(grads_flat, l2_norm_clip)
+
+    grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
+
+    return grads_unflat,num_clipped
+
+@jit
+def add_noise_fn(noise_std,rng_key,updates):
+    
+    num_vars = len(jax.tree_util.tree_leaves(updates))
+    treedef = jax.tree_util.tree_structure(updates)
+    new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
+    noise = jax.tree_util.tree_map(
+        lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+        updates, jax.tree_util.tree_unflatten(treedef, all_keys))
+    updates = jax.tree_util.tree_map(
+        lambda g, n: (g + noise_std * n),
+        updates, noise)
+
+    return updates, new_key
 
 class TrainerModule:
 
@@ -215,12 +240,16 @@ class TrainerModule:
         loss,acc,cor =self.loss_eval(params,batch)
         return loss, acc,cor
     
-    @partial(jit, static_argnums=0)
-    def mini_batch_dif_clip2(self,batch,params,l2_norm_clip):
-        
+    @partial(jit,static_argnums=0)
+    def per_example_gradients(self,params,batch):
         batch = jax.tree_map(lambda x: x[:, None], batch)
         
         (loss_val,(acc,cor)), per_example_grads = jax.vmap(jax.value_and_grad(self.loss,has_aux=True),in_axes=(None,0))(params,batch)
+
+        return per_example_grads,jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor)    
+    
+    @partial(jit, static_argnums=0)
+    def mini_batch_dif_clip2(self,per_example_grads,l2_norm_clip):
         
         grads_flat, grads_treedef = jax.tree_util.tree_flatten(per_example_grads)
 
@@ -228,7 +257,7 @@ class TrainerModule:
 
         grads_unflat = jax.tree_util.tree_unflatten(grads_treedef,clipped)
 
-        return grads_unflat,jnp.sum(loss_val),jnp.mean(acc),jnp.sum(cor),num_clipped
+        return grads_unflat,num_clipped
 
     #@partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
@@ -332,7 +361,8 @@ class TrainerModule:
                     samples_used += len(batch[0])
                     sample_sizes.append(len(batch[0]))
                     start_time = time.perf_counter()
-                    grads,loss,accu,cor,num_clipped = jax.block_until_ready(self.mini_batch_dif_clip2(batch,self.params,self.max_grad_norm))
+                    per_grads,loss,accu,cor = jax.block_until_ready(self.per_example_gradients(self.params,batch))
+                    grads,num_clipped = jax.block_until_ready(mini_batch_dif_clip2(per_grads,self.max_grad_norm))
                     acc_grads = add_trees(grads,acc_grads)
                     # acc_grads = jax.tree_map(lambda x,y: x+y, 
                     #                             grads, 
