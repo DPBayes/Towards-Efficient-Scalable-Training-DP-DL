@@ -42,7 +42,7 @@ from opacus.accountants.utils import get_noise_multiplier
 from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
 
 from jax.profiler import start_trace, stop_trace
-
+from functools import partial
 from jax._src.lib import xla_client
 
 @jax.jit
@@ -323,7 +323,7 @@ def body_fun_p(t, args):
     return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs,C
 
 
-@jax.jit(static_argnums=6)
+@partial(jax.jit,static_argnums=(6,))
 def body_fun_non_p(t, state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs ):
     #state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs = args
     start_idx = t * physical_bs
