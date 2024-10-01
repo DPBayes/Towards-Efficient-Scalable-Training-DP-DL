@@ -1016,7 +1016,7 @@ class TrainerModule:
 
         print('finish loading',flush=True)
         print('model loaded')
-        self.print_param_shapes(params)
+        self.print_param_shapes(self.params)
         #self.print_param_values(params)
         return main_rng
         
