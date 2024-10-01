@@ -321,7 +321,7 @@ def private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, noise
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
-    physical_bs = logical_batch_size/k
+    #physical_bs = logical_batch_size/k
     ### gradient accumulation
     def body_fun(t, accumulated_clipped_grads):
         start_idx = t * physical_bs
