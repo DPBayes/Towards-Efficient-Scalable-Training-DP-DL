@@ -45,6 +45,8 @@ from jax.profiler import start_trace, stop_trace
 from functools import partial
 from jax._src.lib import xla_client
 
+PHYSICAL_BATCH = 32
+
 @jax.jit
 def add_trees(x, y):
     #Helper function, add two tree objects
@@ -310,26 +312,26 @@ def private_iteration_state(logical_batch, state, k, q, t, noise_std, C, full_da
 
 @jax.jit
 def body_fun_p(t, args):
-    state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs,C = args
-    start_idx = t * physical_bs
-    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (physical_bs,3,224,224))
-    y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
-    masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+    state, accumulated_grads, logical_batch_x,logical_batch_y,masks,C = args
+    start_idx = t * PHYSICAL_BATCH
+    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (PHYSICAL_BATCH,3,224,224))
+    y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (PHYSICAL_BATCH,))
+    masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (PHYSICAL_BATCH,))
 
     per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
     sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
     accumulated_clipped_grads = add_trees(accumulated_clipped_grads,sum_of_clipped_grads_from_pb)
 
-    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs,C
+    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,C
 
 
-@partial(jax.jit,static_argnums=(6,))
-def body_fun_non_p(t, state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs ):
+@jax.jit
+def body_fun_non_p(t, state, accumulated_grads, logical_batch_x,logical_batch_y,masks ):
     #state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs = args
-    start_idx = t * physical_bs
-    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (physical_bs,3,224,224))
-    y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
-    masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+    start_idx = t * PHYSICAL_BATCH
+    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (PHYSICAL_BATCH,3,224,224))
+    y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (PHYSICAL_BATCH,))
+    masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (PHYSICAL_BATCH,))
 
     summed_grads_from_pb = compute_gradients_non_private(state, x_slice,y_slice, masks_slice)
 
@@ -339,7 +341,7 @@ def body_fun_non_p(t, state, accumulated_grads, logical_batch_x,logical_batch_y,
     #                                         accumulated_grads, 
     #                                         summed_grads_from_pb
     #                                         )
-    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs
+    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks
 
 
 
@@ -427,8 +429,7 @@ def non_private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, f
 
     start_time = time.perf_counter()
     _, accumulated_grads, *_ = jax.block_until_ready(jax.lax.fori_loop(0, k,
-                                    lambda i, args: body_fun_non_p(i, args, accumulated_grads0, x,y,masks,jax.lax.convert_element_type(physical_bs, jnp.int32)),
-                                    state))
+                                    body_fun_non_p,state, accumulated_grads0, x,y,masks))
 
     ### update
     new_state = update_model(state, accumulated_grads)
@@ -673,7 +674,10 @@ def main(args):
     q = q = 1/math.ceil(len(trainset)/args.bs)
     n = len(trainset)
     physical_bs = args.phy_bs
+    global PHYSICAL_BATCH 
+    PHYSICAL_BATCH = physical_bs
 
+    print(PHYSICAL_BATCH)
     alpha = 1e-9 # failure prob.
 
     from scipy.stats import binom
