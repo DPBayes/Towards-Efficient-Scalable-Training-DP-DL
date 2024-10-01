@@ -1018,7 +1018,7 @@ class TrainerModule:
         print('model loaded')
         self.print_param_shapes(self.params)
         #self.print_param_values(params)
-        return main_rng
+        return main_key
         
     def __str__(self) -> str:
         return f"Trainer with seed: {self.seed} and model"
