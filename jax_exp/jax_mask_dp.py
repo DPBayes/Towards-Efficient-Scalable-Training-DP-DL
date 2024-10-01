@@ -711,10 +711,10 @@ def main(args):
             print(privacy_results,flush=True)
         elif clipping_mode == 'non-private-fori':
             #batch_X = jnp.array(batch_X)
-            state, logical_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y),physical_bs, state, k, q, t, n,cpus,gpus)
+            state, logical_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y),int(physical_bs), state, k, q, t, n,cpus,gpus)
         elif clipping_mode == 'private-fori':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-            state, actual_batch_size,logical_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y),physical_bs, state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
+            state, actual_batch_size,logical_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y),int(physical_bs), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
