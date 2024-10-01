@@ -326,7 +326,8 @@ def body_fun_p(t, args):
 
 
 @jax.jit
-def body_fun_non_p(t, state, accumulated_grads, logical_batch_x,logical_batch_y,masks ):
+def body_fun_non_p(t, args):
+    state, accumulated_grads, logical_batch_x,logical_batch_y,masks = args
     #state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs = args
     start_idx = t * PHYSICAL_BATCH
     x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (PHYSICAL_BATCH,3,224,224))
@@ -428,8 +429,7 @@ def non_private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, f
     accumulated_grads0 = jax.tree_map(lambda x: jnp.zeros_like(x), params)
 
     start_time = time.perf_counter()
-    _, accumulated_grads, *_ = jax.block_until_ready(jax.lax.fori_loop(0, k,
-                                    body_fun_non_p,state, accumulated_grads0, x,y,masks))
+    _, accumulated_grads, *_ = jax.block_until_ready(jax.lax.fori_loop(0, k,body_fun_non_p,(state, accumulated_grads0, x,y,masks)))
 
     ### update
     new_state = update_model(state, accumulated_grads)
