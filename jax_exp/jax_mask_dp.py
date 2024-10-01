@@ -371,7 +371,7 @@ def non_private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, f
     def body_fun(t, accumulated_grads):
 
         start_idx = t * physical_bs
-        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0,0), (physical_bs,1,3,224,224))
+        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0), (physical_bs,3,224,224))
         y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
         masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
