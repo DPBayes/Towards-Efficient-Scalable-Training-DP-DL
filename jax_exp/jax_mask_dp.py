@@ -605,7 +605,7 @@ def load_model(rng,model_name,dimension,num_classes):
         #model.apply({'params':params},x)
         #model = model
         params = model.params
-    return main_rng,model,params
+    return main_key,model,params
 
 def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
     """Compute epsilon for DPSGD privacy accounting"""
