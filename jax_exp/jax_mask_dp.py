@@ -320,9 +320,9 @@ def body_fun_p(t, args):
 
     per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
     sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
-    accumulated_clipped_grads = add_trees(accumulated_clipped_grads,sum_of_clipped_grads_from_pb)
+    accumulated_clipped_grads = add_trees(accumulated_grads,sum_of_clipped_grads_from_pb)
 
-    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,C
+    return state, accumulated_clipped_grads, logical_batch_x,logical_batch_y,masks,C
 
 
 @jax.jit
