@@ -203,14 +203,14 @@ class TrainerModule:
     
     def calculate_metrics(self,params,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':params},inputs)
+        logits = self.model(inputs,params=params)[0]
         predicted_class = jnp.argmax(logits,axis=-1)
         acc = jnp.mean(predicted_class==targets)
         return acc
     
     def loss(self,params,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':params},inputs)
+        logits = self.model(inputs,params=params)[0]
         predicted_class = jnp.argmax(logits,axis=-1)
 
         cross_loss = optax.softmax_cross_entropy_with_integer_labels(logits, targets).sum()
@@ -223,7 +223,7 @@ class TrainerModule:
 
     def loss_eval(self,params,batch):
         inputs,targets = batch
-        logits = self.model.apply({'params':params},inputs)
+        logits = self.model(inputs,params=params)[0]
         predicted_class = jnp.argmax(logits,axis=-1)
         cross_losses = optax.softmax_cross_entropy_with_integer_labels(logits, targets)
 
@@ -948,34 +948,37 @@ class TrainerModule:
         
         elif 'vit' in self.model_name:
             model_name = self.model_name
+            model = FlaxViTForImageClassification.from_pretrained(model_name, num_labels=self.num_classes, return_dict=False, ignore_mismatched_sizes=True)
+            self.model = model
+            self.params = params
             #model = FlaxViTForImageClassification.from_pretrained(model_name)
-            model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
-            module = model.module # Extract the Flax Module
-            vars = {'params': model.params} # Extract the parameters
-            #config = module.config
-            model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
+            # model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
+            # module = model.module # Extract the Flax Module
+            # vars = {'params': model.params} # Extract the parameters
+            # #config = module.config
+            # model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
 
-            input_shape = (1,3,self.dimension,self.dimension)
-            #But then, we need to split it in order to get random numbers
+            # input_shape = (1,3,self.dimension,self.dimension)
+            # #But then, we need to split it in order to get random numbers
             
 
-            #The init function needs an example of the correct dimensions, to infer the dimensions.
-            #They are not explicitly writen in the module, instead, the model infer them with the first example.
-            x = jax.random.normal(params_key, input_shape)
+            # #The init function needs an example of the correct dimensions, to infer the dimensions.
+            # #They are not explicitly writen in the module, instead, the model infer them with the first example.
+            # x = jax.random.normal(params_key, input_shape)
 
-            main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-            #Initialize the model
-            variables = jax.jit(model.init)({'params':init_rng},x)
+            # main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
+            # #Initialize the model
+            # variables = jax.jit(model.init)({'params':init_rng},x)
 
-            #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
-            params = variables['params']
-            params['vit'] = vars['params']
-            #params = unfreeze(params)
-            #self.print_param_shapes(params)
-            #print(params)
-            #model.apply({'params':params},x)
-            self.model = model
-            self.params = freeze(params)
+            # #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
+            # params = variables['params']
+            # params['vit'] = vars['params']
+            # #params = unfreeze(params)
+            # #self.print_param_shapes(params)
+            # #print(params)
+            # #model.apply({'params':params},x)
+            # self.model = model
+            # self.params = freeze(params)
 
         else:
             crop_size = self.dimension
@@ -1123,15 +1126,6 @@ def privatize_dataloader(data_loader):
 def add_trees(x, y):
     #Helper function, add two tree objects
     return jax.tree_util.tree_map(lambda a, b: a + b, x, y)
-
-
-def test_grads(trainloader):
-
-
-
-
-
-    pass
 
 
 def main(args):
