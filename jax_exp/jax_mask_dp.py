@@ -323,9 +323,9 @@ def body_fun_p(t, args):
     return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs,C
 
 
-@jax.jit
-def body_fun_non_p(t, args):
-    state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs = args
+@jax.jit(static_argnums=6)
+def body_fun_non_p(t, state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs ):
+    #state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs = args
     start_idx = t * physical_bs
     x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (physical_bs,3,224,224))
     y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
