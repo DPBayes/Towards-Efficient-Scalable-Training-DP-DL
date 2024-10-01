@@ -30,10 +30,10 @@ import math
 import flax.linen as nn
 from transformers import FlaxViTModel,FlaxViTForImageClassification
 from private_vit import ViTModelHead
-from jax.config import config
+#from jax.config import config
 import warnings
-config.update("jax_debug_nans", True)
-config.update("jax_debug_infs", True)
+#config.update("jax_debug_nans", True)
+#config.update("jax_debug_infs", True)
 
 import time
 
