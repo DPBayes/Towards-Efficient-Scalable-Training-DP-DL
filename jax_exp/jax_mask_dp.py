@@ -305,7 +305,7 @@ def private_iteration_state(logical_batch, state, k, q, t, noise_std, C, full_da
     batch_time = time.perf_counter() - start_time
     return new_state, actual_batch_size,logical_batch_size,batch_time
 
-def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
+def private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
     """Optimized DPSGD iteration, with static sizes that complies with the poisson subsampling. It uses JAX fori_loop"""
     params = state.params
     
@@ -321,13 +321,13 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
-
+    physical_bs = logical_batch_size/k
     ### gradient accumulation
     def body_fun(t, accumulated_clipped_grads):
-        start_idx = t * k
-        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0,0), (k,1,3,224,224))
-        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (k,))
-        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (k,))
+        start_idx = t * physical_bs
+        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0,0), (physical_bs,1,3,224,224))
+        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
+        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
         per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
         sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
@@ -352,7 +352,7 @@ def private_iteration_fori_loop(logical_batch, state, k, q, t, noise_std, C, ful
     batch_time = time.perf_counter() - start_time
     return new_state, actual_batch_size,logical_batch_size,batch_time
 
-def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_size,cpus,gpus):
+def non_private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, full_data_size,cpus,gpus):
     params = state.params
     
     sampling_rng = jax.random.PRNGKey(t + 1)
@@ -366,14 +366,14 @@ def non_private_iteration_fori_loop(logical_batch, state, k, q, t, full_data_siz
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
-
+    #physical_bs = logical_batch_size/k
     ### gradient accumulation
     def body_fun(t, accumulated_grads):
 
-        start_idx = t * k
-        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0), (k,3,224,224))
-        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (k,))
-        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (k,))
+        start_idx = t * physical_bs
+        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0,0), (physical_bs,1,3,224,224))
+        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
+        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
         summed_grads_from_pb = compute_gradients_non_private(state, x_slice,y_slice, masks_slice)
 
@@ -711,10 +711,10 @@ def main(args):
             print(privacy_results,flush=True)
         elif clipping_mode == 'non-private-fori':
             #batch_X = jnp.array(batch_X)
-            state, logical_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, n,cpus,gpus)
+            state, logical_batch_size,batch_time = non_private_iteration_fori_loop((batch_X, batch_y),physical_bs, state, k, q, t, n,cpus,gpus)
         elif clipping_mode == 'private-fori':
             batch_X = np.array(batch_X).reshape(-1, 1,3, args.dimension, args.dimension)
-            state, actual_batch_size,logical_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y), state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
+            state, actual_batch_size,logical_batch_size,batch_time = private_iteration_fori_loop((batch_X, batch_y),physical_bs, state, k, q, t, noise_multiplier, args.grad_norm, n,cpus,gpus)
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(trainset),target_delta=args.target_delta,noise_multiplier=noise_multiplier)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
             print(privacy_results,flush=True)
