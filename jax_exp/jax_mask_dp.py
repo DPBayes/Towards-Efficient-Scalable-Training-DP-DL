@@ -28,7 +28,7 @@ from scipy.stats import binom
 import torchvision
 import math
 import flax.linen as nn
-from transformers import FlaxViTModel
+from transformers import FlaxViTModel,FlaxViTForImageClassification
 from private_vit import ViTModelHead
 from jax.config import config
 import warnings
@@ -76,7 +76,8 @@ def compute_per_example_gradients(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
     def loss_fn(params, X, y):
-        logits = state.apply_fn({'params': params}, X)
+        #logits = state.apply_fn({'params': params}, X)
+        logits = state.apply_fn(X,params=params)[0]
         one_hot = jax.nn.one_hot(y, 100)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
         #assert len(loss) == 1
@@ -107,7 +108,8 @@ def compute_gradients_non_private(state, batch_X, batch_y, mask):
     """Computes gradients, loss and accuracy for a single batch."""
 
     def loss_fn(params, X, y):
-        logits = state.apply_fn({'params': params}, X)
+        logits = state.apply_fn( X,params=params)[0]
+        #{'params': params},
         one_hot = jax.nn.one_hot(y, 100)
         loss = jnp.sum(mask * optax.softmax_cross_entropy(logits=logits, labels=one_hot))
         return loss
@@ -149,7 +151,8 @@ def eval_model(data_loader,state):
 def create_train_state(rng, lr,model,params):
     """Creates initial `TrainState`."""
     tx = optax.adam(lr)
-    return train_state.TrainState.create(apply_fn=jax.jit(model.apply), params=params, tx=tx)
+    return train_state.TrainState.create(apply_fn=model.__call__, params=params, tx=tx)
+    #return train_state.TrainState.create(apply_fn=jax.jit(model.apply), params=params, tx=tx)
 
 @jax.jit
 def process_a_physical_batch(px_grads, mask, C):
@@ -305,6 +308,41 @@ def private_iteration_state(logical_batch, state, k, q, t, noise_std, C, full_da
     batch_time = time.perf_counter() - start_time
     return new_state, actual_batch_size,logical_batch_size,batch_time
 
+@jax.jit
+def body_fun_p(t, args):
+    state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs,C = args
+    start_idx = t * physical_bs
+    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (physical_bs,3,224,224))
+    y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
+    masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+
+    per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
+    sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
+    accumulated_clipped_grads = add_trees(accumulated_clipped_grads,sum_of_clipped_grads_from_pb)
+
+    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs,C
+
+
+@jax.jit
+def body_fun_non_p(t, args):
+    state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs = args
+    start_idx = t * physical_bs
+    x_slice = jax.lax.dynamic_slice(logical_batch_x, (start_idx,0,0,0), (physical_bs,3,224,224))
+    y_slice = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
+    masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+
+    summed_grads_from_pb = compute_gradients_non_private(state, x_slice,y_slice, masks_slice)
+
+    accumulated_grads = add_trees(accumulated_grads,summed_grads_from_pb)
+    
+    # accumulated_grads = jax.tree_map(lambda x,y: x+y, 
+    #                                         accumulated_grads, 
+    #                                         summed_grads_from_pb
+    #                                         )
+    return state, accumulated_grads, logical_batch_x,logical_batch_y,masks,physical_bs
+
+
+
 def private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, noise_std, C, full_data_size,cpus,gpus):
     """Optimized DPSGD iteration, with static sizes that complies with the poisson subsampling. It uses JAX fori_loop"""
     params = state.params
@@ -321,29 +359,29 @@ def private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, noise
     actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum()    
     n_masked_elements = logical_batch_size - actual_batch_size
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
-    #physical_bs = logical_batch_size/k
+    physical_bs = int(physical_bs)
     ### gradient accumulation
-    def body_fun(t, accumulated_clipped_grads):
-        start_idx = t * physical_bs
-        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0,0), (physical_bs,1,3,224,224))
-        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
-        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+    # def body_fun(t, accumulated_clipped_grads):
+    #     start_idx = t * physical_bs
+    #     x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0,0), (physical_bs,1,3,224,224))
+    #     y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
+    #     masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
-        per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
-        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
-        accumulated_clipped_grads = add_trees(accumulated_clipped_grads,sum_of_clipped_grads_from_pb)
-        # accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
-        #                                         accumulated_clipped_grads, 
-        #                                         sum_of_clipped_grads_from_pb
-        #                                         )
-        return accumulated_clipped_grads
+    #     per_example_gradients = compute_per_example_gradients(state, x_slice,y_slice)
+    #     sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients,masks_slice, C)
+    #     accumulated_clipped_grads = add_trees(accumulated_clipped_grads,sum_of_clipped_grads_from_pb)
+    #     # accumulated_clipped_grads = jax.tree_map(lambda x,y: x+y, 
+    #     #                                         accumulated_clipped_grads, 
+    #     #                                         sum_of_clipped_grads_from_pb
+    #     #                                         )
+    #     return accumulated_clipped_grads
 
     
     accumulated_clipped_grads0 = jax.tree_map(lambda x: 0. * x, params)
 
     start_time = time.perf_counter()
 
-    accumulated_clipped_grads = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun, accumulated_clipped_grads0))
+    _, accumulated_clipped_grads, *_  = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun_p, (state, accumulated_clipped_grads0, x,y,masks,physical_bs,C)))
 
     noisy_grad = noise_addition(jax.random.PRNGKey(t), accumulated_clipped_grads, noise_std, C)
 
@@ -368,29 +406,27 @@ def non_private_iteration_fori_loop(logical_batch,physical_bs, state, k, q, t, f
     masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)])
     #physical_bs = logical_batch_size/k
     ### gradient accumulation
-    def body_fun(t, accumulated_grads):
+    # def body_fun(t, accumulated_grads):
 
-        start_idx = t * physical_bs
-        x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0), (physical_bs,3,224,224))
-        y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
-        masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+    #     start_idx = t * physical_bs
+    #     x_slice = jax.lax.dynamic_slice(x, (start_idx,0,0,0), (physical_bs,3,224,224))
+    #     y_slice = jax.lax.dynamic_slice(y, (start_idx,), (physical_bs,))
+    #     masks_slice = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
-        summed_grads_from_pb = compute_gradients_non_private(state, x_slice,y_slice, masks_slice)
+    #     summed_grads_from_pb = compute_gradients_non_private(state, x_slice,y_slice, masks_slice)
 
-        accumulated_grads = add_trees(accumulated_grads,summed_grads_from_pb)
+    #     accumulated_grads = add_trees(accumulated_grads,summed_grads_from_pb)
         
-        # accumulated_grads = jax.tree_map(lambda x,y: x+y, 
-        #                                         accumulated_grads, 
-        #                                         summed_grads_from_pb
-        #                                         )
-        return accumulated_grads
-
+    #     # accumulated_grads = jax.tree_map(lambda x,y: x+y, 
+    #     #                                         accumulated_grads, 
+    #     #                                         summed_grads_from_pb
+    #     #                                         )
+    #     return accumulated_grads
     
     accumulated_grads0 = jax.tree_map(lambda x: jnp.zeros_like(x), params)
 
     start_time = time.perf_counter()
-    accumulated_grads = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun, accumulated_grads0))
-
+    _, accumulated_grads, *_ = jax.block_until_ready(jax.lax.fori_loop(0, k, body_fun_non_p, (state, accumulated_grads0, x,y,masks,physical_bs)))
 
     ### update
     new_state = update_model(state, accumulated_grads)
@@ -539,36 +575,37 @@ def load_model(rng,model_name,dimension,num_classes):
     
     elif 'vit' in model_name:
         model_name = model_name
+        model = FlaxViTForImageClassification.from_pretrained(model_name, num_labels=num_classes, return_dict=False, ignore_mismatched_sizes=True)
         #model = FlaxViTForImageClassification.from_pretrained(model_name)
-        model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
-        module = model.module # Extract the Flax Module
-        vars = {'params': model.params} # Extract the parameters
-        #config = module.config
-        model = ViTModelHead(num_classes=num_classes,pretrained_model=model)
+        # model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
+        # module = model.module # Extract the Flax Module
+        # vars = {'params': model.params} # Extract the parameters
+        # #config = module.config
+        # model = ViTModelHead(num_classes=num_classes,pretrained_model=model)
 
-        input_shape = (1,3,dimension,dimension)
-        #But then, we need to split it in order to get random numbers
+        # input_shape = (1,3,dimension,dimension)
+        # #But then, we need to split it in order to get random numbers
         
 
-        #The init function needs an example of the correct dimensions, to infer the dimensions.
-        #They are not explicitly writen in the module, instead, the model infer them with the first example.
-        x = jax.random.normal(params_key, input_shape)
+        # #The init function needs an example of the correct dimensions, to infer the dimensions.
+        # #They are not explicitly writen in the module, instead, the model infer them with the first example.
+        # x = jax.random.normal(params_key, input_shape)
 
-        main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-        #Initialize the model
-        variables = jax.jit(model.init)({'params':init_rng},x)
-        #variables = model.init({'params':init_rng},x)
+        # main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
+        # #Initialize the model
+        # variables = jax.jit(model.init)({'params':init_rng},x)
+        # #variables = model.init({'params':init_rng},x)
 
-        #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
-        params = variables['params']
-        params['vit'] = vars['params']
+        # #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
+        # params = variables['params']
+        # params['vit'] = vars['params']
         #params = unfreeze(params)
         #print_param_shapes(params)
         #print(params)
         #model.apply({'params':params},x)
-        model = model
-        params = params
-    return main_rng,model,freeze(params)
+        #model = model
+        params = model.params
+    return main_rng,model,params
 
 def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
     """Compute epsilon for DPSGD privacy accounting"""
@@ -669,7 +706,8 @@ def main(args):
 
     samples = 0
     epoch_time = 0
-    throughtputs = []
+    throughtputs_b = []
+    throughtputs_e = []
     throughtputs_t = []
     e = 0
     time_epoch = time.perf_counter()
@@ -723,12 +761,13 @@ def main(args):
         xla_client._xla.collect_garbage()
         acc = eval_model(testloader,state)
         t = t+1
+        throughtputs_b.append(logical_batch_size/batch_time)
         samples += logical_batch_size
         epoch_time += batch_time
         if t % iters_per_epoch == 0:
             print('finish epoch',e,'t',t)
             time_epoch_total = time.perf_counter() - time_epoch
-            throughtputs.append(samples/epoch_time)
+            throughtputs_e.append(samples/epoch_time)
             throughtputs_t.append(samples/time_epoch_total)
             samples = 0
             epoch_time = 0
@@ -736,8 +775,9 @@ def main(args):
             time_epoch = time.perf_counter()
         print('after iteration',t,'acc eval',acc,flush=True)
 
-    print(throughtputs)
-    return np.mean(throughtputs),acc
+    print('per batch throughtput',throughtputs_b)
+    print(throughtputs_e)
+    return np.mean(throughtputs_e),acc
     #eval(state,)
 
 #main(dict({'dimension':224,'epochs':2,'clipping_mode':'private','num_classes':100,'model_name':'google/vit-base-patch16-224','lr':0.00031,'bs':25000,'pbs':50}))
