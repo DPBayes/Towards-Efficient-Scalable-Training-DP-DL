@@ -49,6 +49,10 @@ from torch.distributed import init_process_group, destroy_process_group
 
 import csv
 import time
+import gc
+
+gc.collect()
+torch.cuda.empty_cache()
 #Defines each worker seed. Since each worker needs a different seed.
 #The worker_id is a parameter given by the loader, but it is not used inside the method
 def seed_worker(worker_id):
