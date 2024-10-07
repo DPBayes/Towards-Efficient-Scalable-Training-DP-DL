@@ -1,5 +1,5 @@
 import argparse
-from jax_mask_dp import main
+from jax_mask_efficient import main
 import os
 import csv
 
