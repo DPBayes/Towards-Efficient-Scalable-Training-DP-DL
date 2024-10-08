@@ -609,9 +609,19 @@ def eval_fn(state, batch_X, batch_y):
 #     times.append(duration)
 #     logical_batch_sizes.append(logical_batch_size)
 
+def model_evaluation(state,test_data,test_labels):
+
+    accs = []
+
+    for pb,yb in zip(test_data,test_labels):
+        accs.append(eval_fn(state,pb,yb))
+        
+    return np.mean(np.array(accs))
+    
+
 def main(args):
 
-    print(args)
+    print(args,flush=True)
 
     steps = args.epochs * math.ceil(len(train_images)/args.bs)
 
@@ -644,6 +654,9 @@ def main(args):
 
     jax.clear_caches()
 
+    splits_test = jnp.split(test_images,10)
+    splits_labels = jnp.split(test_labels,10)
+    
     if dynamic_slice:
         @jax.jit
         def body_fun(t, args):
@@ -709,7 +722,7 @@ def main(args):
             logical_batch_y_split = jnp.array(jnp.split(logical_batch_y, n_physical_batches))
 
 
-        print("##### Starting gradient accumulation #####")
+        print("##### Starting gradient accumulation #####",flush=True)
         ### gradient accumulation
         params = state.params
         
@@ -725,11 +738,22 @@ def main(args):
         state = jax.block_until_ready(update_model(state, noisy_grad))
         end = time.time()
         duration = end-start
-        print(duration)
+        print(duration,flush=True)
         times.append(duration)
         logical_batch_sizes.append(logical_batch_size)
-    
-    return times, logical_batch_sizes
+
+        acc_iter = model_evaluation(state,splits_test,splits_labels)
+        print('iteration',t,'acc',acc_iter,flush=True)
+
+    acc_last = model_evaluation(state,splits_test,splits_labels)
+
+    print('times \n',times,flush=True)
+
+    print('batch sizes \n ',logical_batch_size,flush=True)
+
+    print('accuracy at end of training',acc_last,flush=True)
+    thr = np.mean(np.array(logical_batch_sizes) / np.array(times))
+    return thr,acc_last
 
 
 
