@@ -26,18 +26,25 @@ import time
 # ## Load data to CPU
 
 
-train_images = np.load("train_images.npy")# .to_device(device=jax.devices("cpu")[0])
-train_labels = np.load("train_labels.npy")# .to_device(device=jax.devices("cpu")[0])
+train_images = np.load("numpy_cifar100/train_images.npy")# .to_device(device=jax.devices("cpu")[0])
+train_labels = np.load("numpy_cifar100/train_labels.npy")# .to_device(device=jax.devices("cpu")[0])
 
-train_images = jnp.array(train_images, device=jax.devices("cpu")[0])
-train_labels = jnp.array(train_labels, device=jax.devices("cpu")[0])
+#train_images = jnp.array(train_images, device=jax.devices("cpu")[0])
+#train_labels = jnp.array(train_labels, device=jax.devices("cpu")[0])
+
+train_images = jax.device_put(train_images, device=jax.devices("cpu")[0])
+train_labels = jax.device_put(train_labels, device=jax.devices("cpu")[0])
 
 
-test_images = np.load("test_images.npy")# .to_device(device=jax.devices("cpu")[0])
-test_labels = np.load("test_labels.npy")# .to_device(device=jax.devices("cpu")[0])
+test_images = np.load("numpy_cifar100/test_images.npy")# .to_device(device=jax.devices("cpu")[0])
+test_labels = np.load("numpy_cifar100/test_labels.npy")# .to_device(device=jax.devices("cpu")[0])
 
-test_images = jnp.array(test_images, device=jax.devices("cpu")[0])
-test_labels = jnp.array(test_labels, device=jax.devices("cpu")[0])
+#test_images = jnp.array(test_images, device=jax.devices("cpu")[0])
+#test_labels = jnp.array(test_labels, device=jax.devices("cpu")[0])
+
+test_images = jax.device_put(test_images, device=jax.devices("cpu")[0])
+test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
+
 
 DIMENSION = 224
 # resizer = lambda x: jax.image.resize(x, shape=(3, dimension, dimension), method="bilinear")
@@ -677,7 +684,7 @@ def main(args):
 
         #######
         # poisson subsample
-        actual_batch_size = jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum().to_device(jax.devices("cpu")[0])
+        actual_batch_size = jax.device_put(jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum(),jax.devices("cpu")[0])
         n_physical_batches = actual_batch_size // physical_bs + 1 
         logical_batch_size = n_physical_batches * physical_bs
         n_masked_elements = logical_batch_size - actual_batch_size
@@ -689,12 +696,12 @@ def main(args):
         #######
         
         # masks
-        masks = jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]).to_device(jax.devices("cpu")[0])
+        masks = jax.to_device(jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]),jax.devices("cpu")[0])
         
         # cast to GPU
-        logical_batch_X = logical_batch_X.to_device(jax.devices("gpu")[0])
-        logical_batch_y = logical_batch_y.to_device(jax.devices("gpu")[0])
-        masks = masks.to_device(jax.devices("gpu")[0])
+        logical_batch_X = jax.to_device(logical_batch_X,jax.devices("gpu")[0])
+        logical_batch_y = jax.to_device(logical_batch_y,jax.devices("gpu")[0])
+        masks = jax.to_device(masks,jax.devices("gpu")[0])
         
         if not dynamic_slice:
             masks = jnp.array(jnp.split(masks, n_physical_batches))
