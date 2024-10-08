@@ -625,7 +625,7 @@ def main(args):
     config.learning_rate = 0.00031
     
     state = create_train_state(
-        model_name = args.model_name,
+        model_name = args.model,
         num_labels = 100,
         config = config,
     )
