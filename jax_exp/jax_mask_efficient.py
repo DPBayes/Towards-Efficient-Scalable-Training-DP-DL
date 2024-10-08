@@ -47,6 +47,9 @@ test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
 
 
 DIMENSION = 224
+
+DATA_MEANS = np.array([0.5, 0.5, 0.5])
+DATA_STD = np.array([0.5,0.5, 0.5])
 # resizer = lambda x: jax.image.resize(x, shape=(3, dimension, dimension), method="bilinear")
 # train_images = jax.vmap(resizer)(train_images[:10000])
 
@@ -71,7 +74,7 @@ def add_trees(x, y):
 def compute_per_example_gradients(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
-    resizer = lambda x: jax.image.resize(x, shape=(1, 3, DIMENSION, DIMENSION), method="bilinear")
+    resizer = lambda x: ((jax.image.resize(x, shape=(1, 3, DIMENSION, DIMENSION), method="bilinear")/ 255.) - DATA_MEANS) / DATA_STD
     
     def loss_fn(params, X, y):
         resized_X = resizer(X)
@@ -270,7 +273,7 @@ def compute_gradients_non_dp(state, batch_X, batch_y, mask):
     #      masked_loss = loss * mask
     #      return masked_loss.sum()
 
-    resizer = lambda x: jax.image.resize(x, shape=(1, 3, DIMENSION, DIMENSION), method="bilinear")
+    resizer = lambda x: ((jax.image.resize(x, shape=(1, 3, DIMENSION, DIMENSION), method="bilinear")/ 255.) - DATA_MEANS) / DATA_STD
     
     def loss_fn(params, X, y):
         resized_X = resizer(X)
@@ -481,8 +484,7 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 def eval_fn(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
-    resizer = lambda x: jax.image.resize(x, shape=(len(batch_X),3, DIMENSION, DIMENSION), method="bilinear")
-    
+    resizer = lambda x: ((jax.image.resize(x, shape=(len(batch_X),3, DIMENSION, DIMENSION), method="bilinear")/ 255.) - DATA_MEANS) / DATA_STD
     resized_X = resizer(batch_X)
     logits = state.apply_fn( resized_X,state.params)[0]
     one_hot = jax.nn.one_hot(batch_y, 100)
@@ -634,7 +636,7 @@ def main(args):
 
     config = namedtuple("Config", ["momentum", "learning_rate"])
     config.momentum = 1
-    config.learning_rate = 0.00031
+    config.learning_rate = args.lr
     
     state = create_train_state(
         model_name = args.model,
