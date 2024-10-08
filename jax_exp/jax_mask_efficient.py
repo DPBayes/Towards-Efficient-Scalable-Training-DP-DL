@@ -481,7 +481,7 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 def eval_fn(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
-    resizer = lambda x: jax.image.resize(x, shape=(3, DIMENSION, DIMENSION), method="bilinear")
+    resizer = lambda x: jax.image.resize(x, shape=(len(batch_X),3, DIMENSION, DIMENSION), method="bilinear")
     
     resized_X = resizer(batch_X)
     logits = state.apply_fn( resized_X,state.params)[0]
@@ -740,9 +740,11 @@ def main(args):
         state = jax.block_until_ready(update_model(state, noisy_grad))
         end = time.time()
         duration = end-start
-        print(duration,flush=True)
+        
         times.append(duration)
         logical_batch_sizes.append(logical_batch_size)
+
+        print(logical_batch_size/duration,flush=True)
 
         acc_iter = model_evaluation(state,splits_test,splits_labels)
         print('iteration',t,'acc',acc_iter,flush=True)
