@@ -696,12 +696,12 @@ def main(args):
         #######
         
         # masks
-        masks = jax.to_device(jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]),jax.devices("cpu")[0])
+        masks = jax.device_put(jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]),jax.devices("cpu")[0])
         
         # cast to GPU
-        logical_batch_X = jax.to_device(logical_batch_X,jax.devices("gpu")[0])
-        logical_batch_y = jax.to_device(logical_batch_y,jax.devices("gpu")[0])
-        masks = jax.to_device(masks,jax.devices("gpu")[0])
+        logical_batch_X = jax.device_put(logical_batch_X,jax.devices("gpu")[0])
+        logical_batch_y = jax.device_put(logical_batch_y,jax.devices("gpu")[0])
+        masks = jax.device_put(masks,jax.devices("gpu")[0])
         
         if not dynamic_slice:
             masks = jnp.array(jnp.split(masks, n_physical_batches))
