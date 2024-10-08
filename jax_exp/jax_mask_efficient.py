@@ -617,7 +617,7 @@ def main(args):
 
     q = 1/math.ceil(len(train_images)/args.bs)
 
-    noise_std = calculate_noise(q,args.epsilon,args.delta,args.epochs,args.accountant)
+    noise_std = calculate_noise(q,args.epsilon,args.target_delta,args.epochs,args.accountant)
     C = args.grad_norm
 
     config = namedtuple("Config", ["momentum", "learning_rate"])
