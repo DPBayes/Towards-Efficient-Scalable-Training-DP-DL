@@ -281,7 +281,7 @@ def main(args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
             # slice
             start_idx = t * physical_bs
-            pb = jax.lax.dynamic_slice(logical_batch_X, (start_idx, 0, 0, 0, 0), (physical_bs, 1, 3, orig_dimension, orig_dimension))
+            pb = jax.lax.dynamic_slice(logical_batch_X, (start_idx, 0, 0, 0), (physical_bs, 3, orig_dimension, orig_dimension))
             yb = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
             mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
