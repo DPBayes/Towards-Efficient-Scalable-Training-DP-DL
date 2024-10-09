@@ -73,7 +73,7 @@ def add_trees(x, y):
 
 def normalize_and_reshape_ind(imgs):
     normalized = ((imgs/255.) - 0.5) / 0.5
-    return jax.image.resize(normalized, shape=(3, 224, 244), method="bilinear")
+    return jax.image.resize(normalized, shape=(1,3, 224, 244), method="bilinear")
 
 def normalize_and_reshape(imgs):
     normalized = ((imgs/255.) - 0.5) / 0.5
