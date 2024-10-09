@@ -71,20 +71,20 @@ def add_trees(x, y):
 
 # ## Main functions for DP-SGD
 
-def normalize_and_reshape_ind(imgs):
-    normalized = ((imgs/255.) - 0.5) / 0.5
-    return jax.image.resize(normalized, shape=(1,3, 224, 244), method="bilinear")
+# def normalize_and_reshape_ind(imgs):
+#     normalized = ((imgs/255.) - 0.5) / 0.5
+#     return jax.image.resize(normalized, shape=(1,3, 224, 224), method="bilinear")
 
 def normalize_and_reshape(imgs):
     normalized = ((imgs/255.) - 0.5) / 0.5
-    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 244), method="bilinear")
+    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
 
 
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
-    resizer = lambda x: normalize_and_reshape_ind(x)
+    resizer = lambda x: normalize_and_reshape(x)
     
     def loss_fn(params, X, y):
         resized_X = resizer(X)
