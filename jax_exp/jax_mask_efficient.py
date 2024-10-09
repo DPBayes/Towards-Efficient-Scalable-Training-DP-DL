@@ -23,6 +23,9 @@ import os
 from transformers import FlaxViTForImageClassification
 import math
 import time
+
+DATA_MEANS = np.array([0.5, 0.5, 0.5])
+DATA_STD = np.array([0.5,0.5, 0.5])
 # ## Load data to CPU
 
 
@@ -48,8 +51,7 @@ test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
 
 DIMENSION = 224
 
-DATA_MEANS = np.array([0.5, 0.5, 0.5])
-DATA_STD = np.array([0.5,0.5, 0.5])
+
 # resizer = lambda x: jax.image.resize(x, shape=(3, dimension, dimension), method="bilinear")
 # train_images = jax.vmap(resizer)(train_images[:10000])
 
@@ -69,12 +71,15 @@ def add_trees(x, y):
 
 # ## Main functions for DP-SGD
 
+def normalize_and_reshape(imgs):
+    normalized = ((imgs/255.) - 0.5) / 0.5
+    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 244), method="bilinear")
 
 @jax.jit
 def compute_per_example_gradients(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
-    resizer = lambda x: ((jax.image.resize(x, shape=(1, 3, DIMENSION, DIMENSION), method="bilinear")/ 255.) - DATA_MEANS) / DATA_STD
+    resizer = lambda x: normalize_and_reshape(x)
     
     def loss_fn(params, X, y):
         resized_X = resizer(X)
@@ -273,7 +278,7 @@ def compute_gradients_non_dp(state, batch_X, batch_y, mask):
     #      masked_loss = loss * mask
     #      return masked_loss.sum()
 
-    resizer = lambda x: ((jax.image.resize(x, shape=(1, 3, DIMENSION, DIMENSION), method="bilinear")/ 255.) - DATA_MEANS) / DATA_STD
+    resizer = lambda x: normalize_and_reshape(x)
     
     def loss_fn(params, X, y):
         resized_X = resizer(X)
@@ -484,7 +489,7 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 def eval_fn(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
 
-    resizer = lambda x: ((jax.image.resize(x, shape=(len(batch_X),3, DIMENSION, DIMENSION), method="bilinear")/ 255.) - DATA_MEANS) / DATA_STD
+    resizer = lambda x: normalize_and_reshape(x)
     resized_X = resizer(batch_X)
     logits = state.apply_fn( resized_X,state.params)[0]
     one_hot = jax.nn.one_hot(batch_y, 100)
