@@ -259,13 +259,13 @@ class TrainerModule:
 
         return grads_unflat,num_clipped
 
-    #@partial(jit, static_argnums=0)
+    @partial(jit, static_argnums=0)
     def grad_acc_update(self,grads,opt_state,params):
         updates,new_opt_state = self.optimizer.update(grads,opt_state,params)
         new_params = optax.apply_updates(params,updates)
         return new_params,new_opt_state
     
-    #@partial(jit, static_argnums=0)
+    @partial(jit, static_argnums=0)
     def non_private_update(self,params,batch):
         (loss_val,(acc,cor)), grads = jax.value_and_grad(self.loss,has_aux=True)(params,batch)
         return grads,loss_val,acc,cor
@@ -309,20 +309,20 @@ class TrainerModule:
         expected_acc_steps = expected_bs // self.physical_bs
         print('expected accumulation steps',expected_acc_steps)
 
-        @jit
-        def add_noise_fn(noise_std,rng_key,updates):
+        # @jit
+        # def add_noise_fn(noise_std,rng_key,updates):
             
-            num_vars = len(jax.tree_util.tree_leaves(updates))
-            treedef = jax.tree_util.tree_structure(updates)
-            new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-            noise = jax.tree_util.tree_map(
-                lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
-                updates, jax.tree_util.tree_unflatten(treedef, all_keys))
-            updates = jax.tree_util.tree_map(
-                lambda g, n: (g + noise_std * n),
-                updates, noise)
+        #     num_vars = len(jax.tree_util.tree_leaves(updates))
+        #     treedef = jax.tree_util.tree_structure(updates)
+        #     new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
+        #     noise = jax.tree_util.tree_map(
+        #         lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
+        #         updates, jax.tree_util.tree_unflatten(treedef, all_keys))
+        #     updates = jax.tree_util.tree_map(
+        #         lambda g, n: (g + noise_std * n),
+        #         updates, noise)
 
-            return updates, new_key
+        #     return updates, new_key
         
         comp_time = 0
         gradient_step_ac = 0
@@ -364,10 +364,6 @@ class TrainerModule:
                     per_grads,loss,accu,cor = jax.block_until_ready(self.per_example_gradients(self.params,batch))
                     grads,num_clipped = jax.block_until_ready(mini_batch_dif_clip2(per_grads,self.max_grad_norm))
                     acc_grads = add_trees(grads,acc_grads)
-                    # acc_grads = jax.tree_map(lambda x,y: x+y, 
-                    #                             grads, 
-                    #                             acc_grads
-                    #                             )
                     accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
@@ -951,34 +947,6 @@ class TrainerModule:
             model = FlaxViTForImageClassification.from_pretrained(model_name, num_labels=self.num_classes, return_dict=False, ignore_mismatched_sizes=True)
             self.model = model
             self.params = model.params
-            #model = FlaxViTForImageClassification.from_pretrained(model_name)
-            # model = FlaxViTModel.from_pretrained(model_name,add_pooling_layer=False)
-            # module = model.module # Extract the Flax Module
-            # vars = {'params': model.params} # Extract the parameters
-            # #config = module.config
-            # model = ViTModelHead(num_classes=self.num_classes,pretrained_model=model)
-
-            # input_shape = (1,3,self.dimension,self.dimension)
-            # #But then, we need to split it in order to get random numbers
-            
-
-            # #The init function needs an example of the correct dimensions, to infer the dimensions.
-            # #They are not explicitly writen in the module, instead, the model infer them with the first example.
-            # x = jax.random.normal(params_key, input_shape)
-
-            # main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-            # #Initialize the model
-            # variables = jax.jit(model.init)({'params':init_rng},x)
-
-            # #So far, the parameters are initialized randomly, so we need to unfreeze them and add the pre loaded parameters.
-            # params = variables['params']
-            # params['vit'] = vars['params']
-            # #params = unfreeze(params)
-            # #self.print_param_shapes(params)
-            # #print(params)
-            # #model.apply({'params':params},x)
-            # self.model = model
-            # self.params = freeze(params)
 
         else:
             crop_size = self.dimension
@@ -1100,8 +1068,6 @@ def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_worke
     transformation = torchvision.transforms.Compose([
         torchvision.transforms.Resize(dimension),
         fn,
-        #torchvision.transforms.ToTensor(),
-        #torchvision.transforms.Normalize(DATA_MEANS,DATA_STD),
     ])
     
     if ten==10:

@@ -15,10 +15,16 @@ from collections import namedtuple
 from opacus.accountants.utils import get_noise_multiplier
 
 import os
+from dp_accounting import dp_event,rdp
+import warnings
 
 from transformers import FlaxViTForImageClassification
 import math
 import time
+
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".90"
+os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
 
 DATA_MEANS = np.array([0.5, 0.5, 0.5])
 DATA_STD = np.array([0.5,0.5, 0.5])
@@ -216,9 +222,32 @@ def model_evaluation(state,test_data,test_labels):
         accs.append(eval_fn(state,pb,yb))
         
     return np.mean(np.array(accs))
+
+def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
+    """Compute epsilon for DPSGD privacy accounting"""
+    if num_examples * target_delta > 1.:
+        warnings.warn('Your delta might be too high.')
+
+    print('steps',steps,flush=True)
+
+    print('noise multiplier',noise_multiplier,flush=True)
+
+    q = batch_size / float(num_examples)
+    orders = list(jnp.linspace(1.1, 10.9, 99)) + list(range(11, 64))
+    accountant = rdp.rdp_privacy_accountant.RdpAccountant(orders) # type: ignore
+    accountant.compose(
+        dp_event.PoissonSampledDpEvent(
+            q, dp_event.GaussianDpEvent(noise_multiplier)), steps)
+    
+    epsilon = accountant.get_epsilon(target_delta)
+    delta = accountant.get_delta(epsilon)
+
+    return epsilon,delta
     
 
 def main(args):
+
+    jax.clear_caches()
 
     print(args,flush=True)
 
@@ -250,8 +279,6 @@ def main(args):
 
     times = []
     logical_batch_sizes = []
-
-    jax.clear_caches()
 
     splits_test = jnp.split(test_images,10)
     splits_labels = jnp.split(test_labels,10)
@@ -373,6 +400,10 @@ def main(args):
         acc_iter = model_evaluation(state,splits_test,splits_labels)
         print('iteration',t,'acc',acc_iter,flush=True)
 
+        epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(train_images),target_delta=args.target_delta,noise_multiplier=noise_std)
+        privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+        print(privacy_results,flush=True)
+    
     acc_last = model_evaluation(state,splits_test,splits_labels)
 
     print('times \n',times,flush=True)

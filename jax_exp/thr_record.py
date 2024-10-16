@@ -1,5 +1,5 @@
 import argparse
-from pipeline_jax import main
+from naive_jax_pipeline import main
 import os
 import csv
 
