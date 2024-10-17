@@ -1,6 +1,18 @@
 import timm
 from opacus.validators import ModuleValidator
 import models
+import numpy as np
+import os
+
+
+def print_param_shapes(model, prefix=""):
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"{prefix}{name}: {param.shape}")
+
+    for name, module in model.named_children():
+        print(f"{prefix}{name}:")
+        print_param_shapes(module, prefix + "  ")
 
 
 def prepare_vision_model(model, model_name):
@@ -53,6 +65,7 @@ def count_params(model):
     n_params = sum([p.numel() for p in model.parameters()])
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     return n_params, trainable_params
+
 
 # Load model from timm
 def load_model(model_name, n_classes, lib):

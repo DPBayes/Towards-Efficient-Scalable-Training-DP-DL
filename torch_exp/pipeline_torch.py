@@ -43,7 +43,7 @@ import time
 import gc
 
 from privacy_engines import get_privacy_engine, get_privacy_engine_opacus
-from model_functions import count_params, load_model, prepare_vision_model
+from model_functions import count_params, load_model, prepare_vision_model, print_param_shapes
 from seeding_utils import set_seeds
 from data import load_data_cifar
 
@@ -585,16 +585,6 @@ def ddp_setup(rank, world_size, port):
     os.environ["MASTER_PORT"] = port
     init_process_group(backend="nccl", rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
-
-
-def print_param_shapes(model, prefix=""):
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(f"{prefix}{name}: {param.shape}")
-
-    for name, module in model.named_children():
-        print(f"{prefix}{name}:")
-        print_param_shapes(module, prefix + "  ")
 
 
 def main(local_rank, rank, world_size, args):
