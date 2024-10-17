@@ -12,24 +12,18 @@ from fastDP import PrivacyEngine
 """
 
 import os
-from opacus import PrivacyEngine as PrivacyEngineOpacus
-from fastDP import PrivacyEngine as PrivacyEngineBK
-from private_vision import PrivacyEngine as PrivacyEngineVision
 
 # import pdb
 import torch
 import numpy as np
-import random
 
-from torchvision import datasets, transforms
+
 
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
 import torch.backends.cudnn
-import timm
-from opacus.validators import ModuleValidator
-from opacus.accountants.utils import get_noise_multiplier
+
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 from MyOwnBatchManager import MyBatchMemoryManager, EndingLogicalBatchSignal
 from opacus.data_loader import DPDataLoader
@@ -42,208 +36,19 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-import models
-from torch.distributed import init_process_group
-
 import csv
 import time
 import gc
+
+from privacy_engines import get_privacy_engine, get_privacy_engine_opacus
+from model_functions import count_params, load_model, prepare_vision_model, print_param_shapes
+from seeding_utils import set_seeds
+from data import load_data_cifar
 
 gc.collect()
 torch.cuda.empty_cache()
 
 
-# Defines each worker seed. Since each worker needs a different seed.
-# The worker_id is a parameter given by the loader, but it is not used inside the method
-def seed_worker(worker_id):
-
-    # print(torch.initial_seed(),flush=True)
-
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
-
-
-# Set seeds.
-# Returns the generator, that will be used for the data loader
-def set_seeds(seed, device):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    random.seed(seed)
-
-    g_cuda = torch.Generator(device)
-
-    g_cuda.manual_seed(seed)
-
-    g_cpu = torch.Generator("cpu")
-
-    g_cpu.manual_seed(seed)
-
-    np.random.seed(seed)
-
-    print("set seeds seed", seed, flush=True)
-
-    print(torch.initial_seed(), flush=True)
-
-    return g_cuda, g_cpu
-
-
-def load_data_cifar(
-    ten, dimension, batch_size_train, physical_batch_size, num_workers, normalization, lib, generator, world_size
-):
-
-    print("load_data_cifar", lib, batch_size_train, physical_batch_size, num_workers)
-
-    if normalization == "True":
-        means = (0.5, 0.5, 0.5)
-        stds = (0.5, 0.5, 0.5)
-    else:
-        means = (0.485, 0.456, 0.406)
-        stds = (0.229, 0.224, 0.225)
-
-    transformation = transforms.Compose(
-        [
-            transforms.Resize(dimension),
-            transforms.ToTensor(),
-            transforms.Normalize(means, stds),
-        ]
-    )
-
-    if ten == 10:
-        trainset = datasets.CIFAR10(root="../data_cifar10/", train=True, download=True, transform=transformation)
-        testset = datasets.CIFAR10(root="../data_cifar10/", train=False, download=True, transform=transformation)
-    else:
-        trainset = datasets.CIFAR100(root="../data_cifar100/", train=True, download=True, transform=transformation)
-        testset = datasets.CIFAR100(root="../data_cifar100/", train=False, download=True, transform=transformation)
-
-    if lib == "non" and world_size > 1:
-        trainloader = torch.utils.data.DataLoader(
-            trainset,
-            # batch_size=batch_size_train if lib == 'opacus' else physical_batch_size,  #If it is opacus, it uses the normal batch size, because is the BatchMemoryManager the one that handles the phy and bs sizes
-            batch_size=batch_size_train // world_size,
-            shuffle=False,
-            num_workers=num_workers,
-            generator=generator,
-            worker_init_fn=seed_worker,
-            sampler=torch.utils.data.DistributedSampler(trainset, drop_last=True),
-            drop_last=True,
-        )
-    else:
-        trainloader = torch.utils.data.DataLoader(
-            trainset,
-            # batch_size=batch_size_train if lib == 'opacus' else physical_batch_size,  #If it is opacus, it uses the normal batch size, because is the BatchMemoryManager the one that handles the phy and bs sizes
-            batch_size=batch_size_train,
-            shuffle=True,
-            num_workers=num_workers,
-            generator=generator,
-            worker_init_fn=seed_worker,
-        )
-
-    testloader = torch.utils.data.DataLoader(
-        testset, batch_size=80, shuffle=False, num_workers=num_workers, generator=generator, worker_init_fn=seed_worker
-    )
-
-    return trainloader, testloader
-
-
-# FastDP and private_vision libraries use a similar privacy engine. It will modify the internal methods for
-# training, like step and backward.
-# The privacy engine is returned, but it is actually never used, as the optimizer is attached to it.
-# In the case of non private baseline, null is returned
-def get_privacy_engine(model, loader, optimizer, lib, sample_rate, expected_batch_size, args):
-
-    sigma = get_noise_multiplier(
-        target_epsilon=args.epsilon,
-        target_delta=args.target_delta,
-        sample_rate=sample_rate,
-        epochs=args.epochs,
-        accountant=args.accountant,
-    )
-
-    print("Noise multiplier", sigma, flush=True)
-
-    if lib == "fastDP":
-        if "BK" in args.clipping_mode:
-            clipping_mode = args.clipping_mode[3:]
-        else:
-            clipping_mode = "ghost"
-        privacy_engine = PrivacyEngineBK(
-            model,
-            batch_size=expected_batch_size,
-            sample_size=len(loader.dataset),
-            noise_multiplier=sigma,
-            epochs=args.epochs,
-            clipping_mode=clipping_mode,
-            origin_params=args.origin_params,
-            accounting_mode=args.accountant,
-        )
-        privacy_engine.attach(optimizer)
-        return privacy_engine
-
-    elif lib == "private_vision":
-        if "ghost" in args.clipping_mode:
-
-            privacy_engine = PrivacyEngineVision(
-                model,
-                batch_size=expected_batch_size,
-                sample_size=len(loader.dataset),
-                noise_multiplier=sigma,
-                epochs=args.epochs,
-                max_grad_norm=args.grad_norm,
-                ghost_clipping="non" not in args.clipping_mode,
-                mixed="mixed" in args.clipping_mode,
-            )
-            privacy_engine.attach(optimizer)
-            return privacy_engine
-
-    return None
-
-
-def get_privacy_engine_opacus(model, loader, optimizer, criterion, g, args):
-    print("Opacus Engine")
-    privacy_engine = PrivacyEngineOpacus(accountant=args.accountant)
-
-    if args.clipping_mode == "O-ghost":
-        model, optimizer, criterion, loader = privacy_engine.make_private_with_epsilon(
-            module=model,
-            optimizer=optimizer,
-            data_loader=loader,
-            epochs=args.epochs,
-            target_epsilon=args.epsilon,
-            target_delta=args.target_delta,
-            max_grad_norm=args.grad_norm,
-            criterion=criterion,
-            grad_sample_mode="ghost",
-            noise_generator=g,
-        )
-    else:
-        model, optimizer, loader = privacy_engine.make_private_with_epsilon(
-            module=model,
-            optimizer=optimizer,
-            data_loader=loader,
-            epochs=args.epochs,
-            target_epsilon=args.epsilon,
-            target_delta=args.target_delta,
-            max_grad_norm=args.grad_norm,
-            noise_generator=g,
-        )
-
-    print(
-        "optimizer params",
-        "noise multiplier",
-        optimizer.noise_multiplier,
-        "max grad norm",
-        optimizer.max_grad_norm,
-        "loss reduction",
-        optimizer.loss_reduction,
-        "expected batch size",
-        optimizer.expected_batch_size,
-        flush=True,
-    )
-
-    return model, optimizer, loader, privacy_engine, criterion
 
 
 def get_loss_function(lib):
@@ -256,109 +61,6 @@ def get_loss_function(lib):
 
 def privatize_dataloader(data_loader, dist):
     return DPDataLoader.from_data_loader(data_loader, distributed=dist)
-
-
-def prepare_vision_model(model, model_name):
-
-    pre_total, pre_train = count_params(model)
-
-    print("Preparing vision model pre total parameters {} pre trained parameters {}".format(pre_total, pre_train))
-
-    if "xcit" in model_name:
-        for name, param in model.named_parameters():
-            if "gamma" in name or "attn.temperature" in name:
-                param.requires_grad = False
-
-    if "cait" in model_name:
-        for name, param in model.named_parameters():
-            if "gamma_" in name:
-                param.requires_grad = False
-
-    if "convnext" in model_name:
-        for name, param in model.named_parameters():
-            if ".gamma" in name or "head.norm." in name or "downsample.0" in name or "stem.1" in name:
-                param.requires_grad = False
-
-    if "convit" in model_name:
-        for name, param in model.named_parameters():
-            if "attn.gating_param" in name:
-                param.requires_grad = False
-
-    if "beit" in model_name:
-        for name, param in model.named_parameters():
-            if (
-                "gamma_" in name
-                or "relative_position_bias_table" in name
-                or "attn.qkv.weight" in name
-                or "attn.q_bias" in name
-                or "attn.v_bias" in name
-            ):
-                param.requires_grad = False
-
-    for name, param in model.named_parameters():
-        if "cls_token" in name or "pos_embed" in name:
-            param.requires_grad = False
-
-    pos_total, pos_train = count_params(model)
-    print("Preparing vision model post total parameters {} post trained parameters {}".format(pos_total, pos_train))
-    return model
-
-
-def count_params(model):
-    n_params = sum([p.numel() for p in model.parameters()])
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    return n_params, trainable_params
-
-
-def type_params(model):
-    for name, params in model.named_parameters():
-        print(name, type(params))
-
-
-def prepare_vit_model(model):
-    for name, param in model.named_parameters():
-        if "attn." in name:
-            param.requires_grad = False
-
-
-# Load model from timm
-def load_model(model_name, n_classes, lib):
-    print("Path", os.getcwd())
-    print("==> Building model..", model_name, "with n_classes", n_classes)
-    model = None
-    # Model
-    if "vit_base_patch16_224" in model_name:
-        # model = timm.create_model('vit_base_patch16_224.augreg_in21k_ft_in1k',pretrained=True,num_classes=int(n_classes))
-        model = timm.create_model(model_name, pretrained=True, num_classes=int(n_classes))
-        pre_total, pre_train = count_params(model)
-        print("pre total parameters {} pre trained parameters {}".format(pre_total, pre_train))
-        # model = ModuleValidator.fix(model)
-        pos_total, pos_train = count_params(model)
-        print("post total parameters {} post trained parameters {}".format(pos_total, pos_train))
-    elif "BiT-M-R" in model_name:
-        std = False
-        if lib == "non" or lib == "opacus":
-            std = True
-        model = models.KNOWN_MODELS[model_name](head_size=100, zero_head=True, std=std)
-        model.load_from(np.load(f"/models_files/{model_name}.npz"))
-        pos_total, pos_train = count_params(model)
-        print("post total parameters {} post trained parameters {}".format(pos_total, pos_train))
-    else:
-        model = timm.create_model(model_name, pretrained=True, num_classes=int(n_classes))
-        pre_total, pre_train = count_params(model)
-        print("pre total parameters {} pre trained parameters {}".format(pre_total, pre_train))
-        print(ModuleValidator.validate(model))
-        if not ModuleValidator.is_valid(model) and not lib == "non":
-            model = ModuleValidator.fix(model)
-        model = ModuleValidator.fix(model)
-        print("After validation: \n", ModuleValidator.validate(model))
-
-        pos_total, pos_train = count_params(model)
-        print("post total parameters {} post trained parameters {}".format(pos_total, pos_train))
-
-    model = models.DpFslLinear(model_name, model, n_classes)
-
-    return model
 
 
 # Train step.
@@ -868,29 +570,6 @@ def test(device, model, lib, loader, criterion, epoch):
     print("correctly classified", correct_test, "/", total_test, 100.0 * correct_test / total_test, flush=True)
 
     return acc
-
-
-def ddp_setup(rank, world_size, port):
-    """
-    Args:
-        rank: Unique identifier of each process
-        world_size: Total number of processes
-    """
-    os.environ["MASTER_ADDR"] = "localhost"
-    # os.environ["MASTER_PORT"] = "12355"
-    os.environ["MASTER_PORT"] = port
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
-
-
-def print_param_shapes(model, prefix=""):
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(f"{prefix}{name}: {param.shape}")
-
-    for name, module in model.named_children():
-        print(f"{prefix}{name}:")
-        print_param_shapes(module, prefix + "  ")
 
 
 def main(local_rank, rank, world_size, args):
