@@ -36,8 +36,6 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-from torch.distributed import init_process_group
-
 import csv
 import time
 import gc
@@ -572,19 +570,6 @@ def test(device, model, lib, loader, criterion, epoch):
     print("correctly classified", correct_test, "/", total_test, 100.0 * correct_test / total_test, flush=True)
 
     return acc
-
-
-def ddp_setup(rank, world_size, port):
-    """
-    Args:
-        rank: Unique identifier of each process
-        world_size: Total number of processes
-    """
-    os.environ["MASTER_ADDR"] = "localhost"
-    # os.environ["MASTER_PORT"] = "12355"
-    os.environ["MASTER_PORT"] = port
-    init_process_group(backend="nccl", rank=rank, world_size=world_size)
-    torch.cuda.set_device(rank)
 
 
 def main(local_rank, rank, world_size, args):
