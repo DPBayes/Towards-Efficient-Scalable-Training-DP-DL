@@ -76,25 +76,25 @@ There are different flags:
 
 ### JAX
 
-#### Mask
+#### Mask Efficient Implementation
 ```
     python3 Towards-Efficient-Scalable-Training-DP-DL/jax_exp/thr_record_for_mask.py --bs 32492 --phy_bs=64 --file 'record_throughput.csv' --model 'google/vit-base-patch16-224-in21k' --n_workers 0 --epsilon 8 --seed 20 --grad_norm 4.637 --clipping_mode 'DP' --epochs 2 --lr 0.00031
 ```
 
-Clipping methods:
+- Clipping methods:
 
     ```
     --clipping_mode <'non-private','DP'>
     ```
-    
+
     Choose clipping mode between the non-private and DP.
 
-#### Naive 
+#### Naive Implementation
 ```
     python3 Towards-Efficient-Scalable-Training-DP-DL/jax_exp/thr_record.py --bs 32492 --phy_bs=64 --file 'record_throughput.csv' --model 'google/vit-base-patch16-224-in21k' --n_workers 16 --epsilon 8 --seed 20 --grad_norm 4.637 --clipping_mode 'DP' --epochs 2 --lr 0.00031
 ```
 
-Clipping methods:
+- Clipping methods:
 
     ```
     --clipping_mode <'non-private-virtual','private-mini'>
