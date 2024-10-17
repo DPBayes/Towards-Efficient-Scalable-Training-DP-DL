@@ -16,18 +16,20 @@ import math
 from typing import List
 
 import numpy as np
-#from opacus.optimizers import DPOptimizer
+
+# from opacus.optimizers import DPOptimizer
 from opacus.utils.uniform_sampler import (
     DistributedUniformWithReplacementSampler,
     UniformWithReplacementSampler,
 )
 from torch.utils.data import BatchSampler, DataLoader, Sampler
 
-class EndingLogicalBatchSignal():
+
+class EndingLogicalBatchSignal:
 
     def __init__(self) -> None:
         self.skip_queue = []
-    
+
     def signal_skip_step(self, do_skip=True):
         """
         Signals the optimizer to skip an optimization step and only perform clipping and
@@ -65,6 +67,7 @@ class EndingLogicalBatchSignal():
         else:
             return False
 
+
 class BatchSplittingSampler(Sampler[List[int]]):
     """
     Samples according to the underlying instance of ``Sampler``, but splits
@@ -94,15 +97,13 @@ class BatchSplittingSampler(Sampler[List[int]]):
 
     def __iter__(self):
         for batch_idxs in self.sampler:
-            #print('logical batch size',len(batch_idxs))
+            # print('logical batch size',len(batch_idxs))
             if len(batch_idxs) == 0:
                 self.signaler.signal_skip_step(do_skip=False)
                 yield []
                 continue
 
-            split_idxs = np.array_split(
-                batch_idxs, math.ceil(len(batch_idxs) / self.max_batch_size)
-            )
+            split_idxs = np.array_split(batch_idxs, math.ceil(len(batch_idxs) / self.max_batch_size))
             split_idxs = [s.tolist() for s in split_idxs]
             for x in split_idxs[:-1]:
                 self.signaler.signal_skip_step(do_skip=True)
@@ -112,9 +113,7 @@ class BatchSplittingSampler(Sampler[List[int]]):
 
     def __len__(self):
         if isinstance(self.sampler, BatchSampler):
-            return int(
-                len(self.sampler) * (self.sampler.batch_size / self.max_batch_size)
-            )
+            return int(len(self.sampler) * (self.sampler.batch_size / self.max_batch_size))
         elif isinstance(self.sampler, UniformWithReplacementSampler) or isinstance(
             self.sampler, DistributedUniformWithReplacementSampler
         ):
@@ -124,11 +123,7 @@ class BatchSplittingSampler(Sampler[List[int]]):
         return len(self.sampler)
 
 
-def wrap_data_loader(
-    *, data_loader: DataLoader, 
-    max_batch_size: int, 
-    signaler: EndingLogicalBatchSignal
-):
+def wrap_data_loader(*, data_loader: DataLoader, max_batch_size: int, signaler: EndingLogicalBatchSignal):
     """
     Replaces batch_sampler in the input data loader with ``BatchSplittingSampler``
 
@@ -176,7 +171,7 @@ class MyBatchMemoryManager(object):
     certain maximum size.
 
     This implementation is different than the Opacus one. It does not take the optimizer,
-    but instead uses a signaler, to tell the optimizer when to take a step, instead of 
+    but instead uses a signaler, to tell the optimizer when to take a step, instead of
     keep accumulating.
 
     It adapts to the library being used, either Private Vision or FastDP. Because their optimizers behave
