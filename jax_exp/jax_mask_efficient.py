@@ -399,11 +399,12 @@ def main(args):
 
         acc_iter = model_evaluation(state,splits_test,splits_labels)
         print('iteration',t,'acc',acc_iter,flush=True)
-
-        epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(train_images),target_delta=args.target_delta,noise_multiplier=noise_std)
-        privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-        print(privacy_results,flush=True)
-    
+        
+        if private:
+            epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(train_images),target_delta=args.target_delta,noise_multiplier=noise_std)
+            privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
+            print(privacy_results,flush=True)
+        
     acc_last = model_evaluation(state,splits_test,splits_labels)
 
     print('times \n',times,flush=True)
