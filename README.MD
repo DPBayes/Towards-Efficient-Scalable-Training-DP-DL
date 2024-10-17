@@ -33,9 +33,11 @@ After cloning the repositories locally.
 
 ## GPU Requirements
 
-The experiments in the paper are executed on NVIDIA V100 and A100 GPUs with 32 and 40 VRAM respectively. 
+The experiments in the paper are executed on NVIDIA V100 and A100 GPUs with 32 and 40 VRAM, respectively. 
 
 ## Experiments
+
+We test two different frameworks, PyTorch and JAX. To execute the experiments, follow the following instructions. For our memory specifications, we use the largest batch size we could find. 
 
 ### PyTorch
 
@@ -46,10 +48,10 @@ The experiments in the paper are executed on NVIDIA V100 and A100 GPUs with 32 a
 - Clipping methods:
 
     ```
-    --clipping_mode <'non-private','O-flat','PV-ghost','BK-ghost','BK-MixOpt'>
+    --clipping_mode <'non-private','O-flat','O-ghost','PV-ghost','PV-ghost_mixed','BK-MixGhostClip','BK-ghost','BK-MixOpt'>
     ```
     
-    According to the clipping mode, a different library and privacy engine will be used. If chosen 'non-private', it will be the PyTorch training loop, with virtual batching. It also accepts 'O-ghost' for Opacus ghost clipping, but at the time of publication, it was not working properly. 
+    According to the clipping mode, a different library and privacy engine will be used. If chosen 'non-private', it will be the PyTorch training loop, with virtual batching. It also accepts 'O-ghost' for Opacus ghost clipping, but it was not ready from the Opacus release at this work publication time. The mix algorithms are optimized for convolutional networks. If they are used with non-convolutional models, like the Vision Transformer, their performance will be the same as the regular ghost clipping. From our experiments, for the PyTorch experiments, BK ghost is the most efficient method.
 
 - file:
     The file name can be anything, and it should be without the file type. It will automatically create a csv.
