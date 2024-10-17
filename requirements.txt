@@ -99,7 +99,7 @@ jax-md==0.2.8
 jaxlib==0.4.30
 jaxtyping==0.2.34
 jedi==0.19.1
-Jinja2==3.1.3
+Jinja2==3.1.4
 jmp==0.0.4
 joblib==1.4.2
 jraph==0.0.6.dev0
@@ -182,7 +182,7 @@ parso==0.8.4
 partd==1.4.2
 patsy==0.5.6
 pexpect==4.9.0
-pillow==10.2.0
+pillow==10.3.0
 platformdirs==4.2.2
 pluggy==1.5.0
 prometheus_client==0.20.0
@@ -238,7 +238,7 @@ sortedcontainers==2.4.0
 soundfile==0.12.1
 soupsieve==2.6
 stack-data==0.6.3
-starlette==0.38.4
+starlette==0.40.0
 statsmodels==0.14.2
 symjax==0.5.0
 sympy==1.12
