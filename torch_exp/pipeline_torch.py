@@ -6,7 +6,6 @@ import gc
 
 import numpy as np
 from opacus.utils.batch_memory_manager import BatchMemoryManager
-from opacus.data_loader import DPDataLoader
 from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
 import time
 import torch
@@ -40,8 +39,7 @@ def get_loss_function(lib):
     return criterion
 
 
-def privatize_dataloader(data_loader, dist):
-    return DPDataLoader.from_data_loader(data_loader, distributed=dist)
+
 
 
 # Train step.

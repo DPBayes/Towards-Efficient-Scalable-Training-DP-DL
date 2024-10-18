@@ -1,7 +1,7 @@
 from torchvision import datasets, transforms
 import torch
 from seeding_utils import seed_worker
-
+from opacus.data_loader import DPDataLoader
 
 def load_data_cifar(
     dimension, batch_size_train, physical_batch_size, num_workers, normalization, lib, generator, world_size
@@ -55,3 +55,6 @@ def load_data_cifar(
     )
 
     return trainloader, testloader
+
+def privatize_dataloader(data_loader, dist):
+    return DPDataLoader.from_data_loader(data_loader, distributed=dist)
