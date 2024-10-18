@@ -440,7 +440,7 @@ def test(device, model, lib, loader, criterion, epoch):
     return acc
 
 
-def main(local_rank, rank, world_size, args):
+def distributed_main(local_rank, rank, world_size, args):
     """
     Distributed training loop (including everything).
     """

@@ -1,5 +1,5 @@
 import argparse
-from pipeline_torch import main, main_non_distributed
+from pipeline_torch import distributed_main, main_non_distributed
 import os
 import torch
 import socket
@@ -54,7 +54,7 @@ if __name__ == "__main__":
             local_rank = int(os.environ["LOCAL_RANK"])
             rank = int(os.environ["RANK"])
             torch.cuda.set_device(local_rank)
-            main(local_rank, rank, world_size, args)
+            distributed_main(local_rank, rank, world_size, args)
             err = "None"
         except RuntimeError as e:
             print(e)
