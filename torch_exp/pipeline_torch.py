@@ -1,81 +1,53 @@
-"""
-So, I need multiple Privacy Engine. 
+import csv
+from datetime import datetime
 
-Opacus - Normal DP
-from opacus import PrivacyEngine
 
-Private Vision - Ghost Clipping Vision
-from private_vision import PrivacyEngine
+import gc
 
-BK: 
-from fastDP import PrivacyEngine
-"""
-
-import os
-
-# import pdb
-import torch
 import numpy as np
-
-
-
+import opacus
+from opacus.utils.batch_memory_manager import BatchMemoryManager
+from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
+import time
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
 import torch.backends.cudnn
 
-from opacus.utils.batch_memory_manager import BatchMemoryManager
-from MyOwnBatchManager import MyBatchMemoryManager, EndingLogicalBatchSignal
-from opacus.data_loader import DPDataLoader
-from datetime import datetime
-
-from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+import os
 import warnings
 
 warnings.filterwarnings("ignore")
 
-import csv
-import time
-import gc
 
+from GenericBatchManager import GenericBatchMemoryManager, EndingLogicalBatchSignal
 from privacy_engines import get_privacy_engine, get_privacy_engine_opacus
 from model_functions import count_params, load_model, prepare_vision_model, print_param_shapes
 from seeding_utils import set_seeds
-from data import load_data_cifar
+from data import load_data_cifar, privatize_dataloader
 
 gc.collect()
 torch.cuda.empty_cache()
 
 
-
-
-def get_loss_function(lib):
-    if lib == "private_vision":
-        criterion = nn.CrossEntropyLoss(reduction="none")
-    else:
-        criterion = nn.CrossEntropyLoss()
-    return criterion
-
-
-def privatize_dataloader(data_loader, dist):
-    return DPDataLoader.from_data_loader(data_loader, distributed=dist)
-
-
-# Train step.
-#   device. For cuda training
-#   model. The current instance of the model
-#   lib. Library that is being used. It can be fastDP, private_vision, opacus or non
-#   loader. Train loader
-#   optimizer. Optimizer ex. Adam
-#   criterion. Loss function, in this case is CrossEntropyLoss
-#   epoch. Index of the current epoch
-#   n_acc_steps
-def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batch):
+def train_efficient_gradient_clipping(
+    device: torch.device,
+    model: torch.nn.module,
+    lib: str,
+    data_loader,
+    optimizer,
+    criterion,
+    epoch: int,
+    physical_batch_size: int,
+):
+    """
+    Train one epoch with efficient gradient clipping methods (under DP).
+    """
 
     flag = EndingLogicalBatchSignal()
-    print("training {} model with load size {}".format(lib, len(loader)))
+    print("training {} model with load size {}".format(lib, len(data_loader)))
     model.train()
     train_loss = 0
     correct = 0
@@ -88,9 +60,9 @@ def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batc
     samples_used = 0
     loss = None
     small_flag = True
-    print("Epoch", epoch, "physical batch size", physical_batch, flush=True)
-    with MyBatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch, signaler=flag
+    print("Epoch", epoch, "physical batch size", physical_batch_size, flush=True)
+    with GenericBatchMemoryManager(
+        data_loader=data_loader, max_physical_batch_size=physical_batch_size, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
             if small_flag:
@@ -166,7 +138,7 @@ def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batc
     print(
         "Epoch: ",
         epoch,
-        len(loader),
+        len(data_loader),
         "Train Loss: %.3f | Acc: %.3f%% (%d/%d)"
         % (train_loss / (batch_idx + 1), 100.0 * correct / total, correct, total),
         flush=True,
@@ -179,7 +151,7 @@ def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batc
         "samples used / batch_idx",
         samples_used / batch_idx,
         "physical batch size",
-        physical_batch,
+        physical_batch_size,
         flush=True,
     )
     throughput = (samples_used) / total_time_epoch
@@ -192,10 +164,23 @@ def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batc
     return throughput, throughput_complete
 
 
-def train_non_private_2(device, model, lib, loader, optimizer, criterion, epoch, physical_batch, expected_acc_steps):
+def train_non_private(
+    device: torch.device,
+    model: torch.nn.module,
+    lib: str,
+    data_loader: torch.data.utils.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    criterion: torch.nn.module,
+    epoch: int,
+    physical_batch_size: int,
+    expected_acc_steps: int,
+):
+    """
+    Train one epoch without DP.
+    """
 
     flag = EndingLogicalBatchSignal()
-    print("training {} model with load size {}".format(lib, len(loader)))
+    print("training {} model with load size {}".format(lib, len(data_loader)))
     model.train()
     train_loss = 0
     batch_loss = 0
@@ -211,9 +196,9 @@ def train_non_private_2(device, model, lib, loader, optimizer, criterion, epoch,
     times_up = 0
     acc = 0
     actual_batch_size = 0
-    print("Epoch", epoch, "physical batch size", physical_batch, "expected_acc", expected_acc_steps, flush=True)
-    with MyBatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch, signaler=flag
+    print("Epoch", epoch, "physical batch size", physical_batch_size, "expected_acc", expected_acc_steps, flush=True)
+    with GenericBatchMemoryManager(
+        data_loader=data_loader, max_physical_batch_size=physical_batch_size, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
             starter_t, ender_t = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
@@ -286,8 +271,8 @@ def train_non_private_2(device, model, lib, loader, optimizer, criterion, epoch,
     print(
         "Epoch: ",
         epoch,
-        len(loader),
-        "Train Loss: %.3f | Acc: %.3f%% (%d/%d)" % (train_loss / len(loader), 100.0 * correct / total, correct, total),
+        len(data_loader),
+        "Train Loss: %.3f | Acc: %.3f%% (%d/%d)" % (train_loss / len(data_loader), 100.0 * correct / total, correct, total),
         flush=True,
     )
     print("times updated", times_up, flush=True)
@@ -299,7 +284,7 @@ def train_non_private_2(device, model, lib, loader, optimizer, criterion, epoch,
         "samples used / batch_idx",
         samples_used / batch_idx,
         "physical batch size",
-        physical_batch,
+        physical_batch_size,
         flush=True,
     )
     throughput = (samples_used) / total_time_epoch
@@ -312,110 +297,19 @@ def train_non_private_2(device, model, lib, loader, optimizer, criterion, epoch,
     return throughput, throughput_complete
 
 
-# Method for Non private learning.
-# It still uses the gradient accumulation, just to compare it to the other methods.
-def train_non_private(device, model, loader, optimizer, criterion, epoch, physical_batch, n_acc_steps):
-    print("training {} model with load size {}".format("non-private", len(loader)))
-    model.train()
-    train_loss = 0
-    correct = 0
-    total = 0
-    batch_idx = 0
-    total_time_epoch = 0
-    total_time = 0
-    correct_batch = 0
-    total_batch = 0
-    samples_used = 0
-    optimizer.zero_grad()
-    loss = None
-
-    for batch_idx, (inputs, targets) in enumerate(loader):
-        starter_t, ender_t = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-        starter_t.record()
-        size_b = len(inputs)
-        # batch_sizes.append(size_b)
-        samples_used += size_b
-        inputs, targets = inputs.to(device), targets.type(torch.LongTensor).to(device)
-        # with collector(tag='batch'):
-
-        # Measure time, after loading data to the GPU
-        starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
-        starter.record()  # type: ignore
-
-        torch.set_grad_enabled(True)
-
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
-        if ((batch_idx + 1) % n_acc_steps == 0) or ((batch_idx + 1) == len(loader)):
-            print("take step batch idx: ", batch_idx + 1, flush=True)
-            optimizer.step()
-            # train_loss += loss.item() * n_acc_steps * inputs.size(0)
-            optimizer.zero_grad()
-        _, predicted = outputs.max(1)
-
-        train_loss += loss.item()
-        total_batch += targets.size(0)
-        correct_batch += predicted.eq(targets).sum().item()
-        del outputs, inputs
-
-        ender.record()  # type: ignore
-        torch.cuda.synchronize()
-
-        curr_time = starter.elapsed_time(ender) / 1000
-        total_time_epoch += curr_time
-
-        if (batch_idx + 1) % 100 == 0 or ((batch_idx + 1) == len(loader)):
-            print(
-                "Epoch: ",
-                epoch,
-                "Batch: ",
-                batch_idx,
-                "Train Loss: %.3f | Acc: %.3f%% (%d/%d)"
-                % (train_loss / len(loader.dataset), 100.0 * correct_batch / total_batch, correct_batch, total_batch),
-                flush=True,
-            )
-            total += total_batch
-            correct += correct_batch
-            total_batch = 0
-            correct_batch = 0
-
-        ender_t.record()  # type: ignore
-        torch.cuda.synchronize()
-        curr_t = starter_t.elapsed_time(ender_t) / 1000
-        total_time += curr_t
-    del loss
-    print(
-        "Epoch: ",
-        epoch,
-        len(loader),
-        "Train Loss: %.3f | Acc: %.3f%% (%d/%d)"
-        % (train_loss / (batch_idx + 1), 100.0 * correct / total, correct, total),
-        flush=True,
-    )
-    print(
-        "batch_idx",
-        batch_idx,
-        "samples used",
-        samples_used,
-        "samples used / batch_idx",
-        samples_used / batch_idx,
-        "physical batch size",
-        physical_batch,
-        flush=True,
-    )
-    throughput = (samples_used) / total_time_epoch
-    throughput_complete = (samples_used) / total_time
-    print(
-        "Epoch {} Total time computing {} Throughput computing {}".format(epoch, total_time_epoch, throughput),
-        flush=True,
-    )
-    print("Epoch {} Total time {} Throughput {}".format(epoch, total_time, throughput_complete), flush=True)
-    return throughput, throughput_complete
-
-
-# Opacus needs its own training method, since it needs the BatchMemoryManager.
-def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_batch):
+def train_opacus(
+    device: torch.device,
+    model: torch.nn.module,
+    data_loader: opacus.data_loader.DPDataLoader,
+    optimizer: opacus.optimizer.DPOptimizer,
+    criterion: torch.nn.module,
+    epoch: int,
+    physical_batch_size: int,
+):
+    """
+    Train one epoch with opacus.
+    Opacus needs its own training method, since it needs the BatchMemoryManager.
+    """
     print("training opacus model")
     model.train()
     train_loss = 0
@@ -428,9 +322,9 @@ def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_ba
     total_batch = 0
     samples_used = 0
     loss = None
-    print("Epoch", epoch, "physical batch size", physical_batch, flush=True)
+    print("Epoch", epoch, "physical batch size", physical_batch_size, flush=True)
     with BatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch, optimizer=optimizer
+        data_loader=data_loader, max_physical_batch_size=physical_batch_size, optimizer=optimizer
     ) as memory_safe_data_loader:
         # len(memory)
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
@@ -504,7 +398,7 @@ def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_ba
     print(
         "Epoch: ",
         epoch,
-        len(loader),
+        len(data_loader),
         "Train Loss: %.3f | Acc: %.3f%% (%d/%d)"
         % (train_loss / (batch_idx + 1), 100.0 * correct / total, correct, total),
         flush=True,
@@ -517,7 +411,7 @@ def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_ba
         "samples used / batch_idx",
         samples_used / batch_idx,
         "physical batch size",
-        physical_batch,
+        physical_batch_size,
         flush=True,
     )
     throughput = (samples_used) / total_time_epoch
@@ -531,9 +425,20 @@ def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_ba
     return throughput, throughput_complete
 
 
-# Test
-# All algorithms and implementations use this test method. It is very general.
-def test(device, model, lib, loader, criterion, epoch):
+1
+
+
+def test(
+    device: torch.device,
+    model: torch.nn.module,
+    lib: str,
+    data_loader: torch.data.utils.DataLoader,
+    criterion: torch.nn.module,
+    epoch: int,
+):
+    """
+    # All algorithms and implementations use this test method. It is very general.
+    """
     model.eval()
     test_loss = 0
     batch_idx = 0
@@ -541,7 +446,7 @@ def test(device, model, lib, loader, criterion, epoch):
     total_test = 0
     accs = []
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(loader):
+        for batch_idx, (inputs, targets) in enumerate(data_loader):
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
@@ -558,11 +463,11 @@ def test(device, model, lib, loader, criterion, epoch):
 
     acc = np.mean(accs)
 
-    dict_test = {"Test Loss": test_loss / len(loader), "Accuracy": acc}
+    dict_test = {"Test Loss": test_loss / len(data_loader), "Accuracy": acc}
     print(
         "Epoch: ",
         epoch,
-        len(loader),
+        len(data_loader),
         "Test Loss: %.3f | Acc: %.3f " % (dict_test["Test Loss"], dict_test["Accuracy"]),
         flush=True,
     )
@@ -572,7 +477,10 @@ def test(device, model, lib, loader, criterion, epoch):
     return acc
 
 
-def main(local_rank, rank, world_size, args):
+def distributed_main(local_rank, rank, world_size, args):
+    """
+    Distributed training loop (including everything).
+    """
 
     print(args)
     models_dict = {
@@ -605,7 +513,6 @@ def main(local_rank, rank, world_size, args):
     generator_gpu, g_cpu = set_seeds(args.seed, device)
 
     train_loader, test_loader = load_data_cifar(
-        args.ten,
         args.dimension,
         args.bs,
         args.phy_bs,
@@ -622,7 +529,7 @@ def main(local_rank, rank, world_size, args):
         )
     )
 
-    model_s = load_model(args.model, n_classes=args.ten, lib=lib).to(device)
+    model_s = load_model(args.model, n_classes=100, lib=lib).to(device)
     print("device", device, "world size", world_size, "rank", rank)
     if lib == "non":
         model = DDP(model_s, device_ids=[device])
@@ -694,11 +601,13 @@ def main(local_rank, rank, world_size, args):
         elif lib == "non":
             # train_loader.sampler.set_epoch(epoch)
             # th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
-            th, t_th = train_non_private_2(
+            th, t_th = train_non_private(
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )
         else:
-            th, t_th = train(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
+            th, t_th = train_efficient_gradient_clipping(
+                device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs
+            )
             privacy_results = privacy_engine.get_privacy_spent()  # type: ignore
             print("Privacy results after training {}".format(privacy_results), flush=True)
         throughs[epoch] = th
@@ -758,6 +667,9 @@ def main(local_rank, rank, world_size, args):
 
 
 def main_non_distributed(args):
+    """
+    Non-distributed training loop (including everything).
+    """
 
     print(args)
     models_dict = {
@@ -790,7 +702,6 @@ def main_non_distributed(args):
     generator_gpu, g_cpu = set_seeds(args.seed, device)
 
     train_loader, test_loader = load_data_cifar(
-        args.ten,
         args.dimension,
         args.bs,
         args.phy_bs,
@@ -807,7 +718,7 @@ def main_non_distributed(args):
         )
     )
 
-    model = load_model(args.model, n_classes=args.ten, lib=lib).to(device)
+    model = load_model(args.model, n_classes=100, lib=lib).to(device)
     print("device", device)
 
     # If there are layers not supported by the private vision library. In the case of the ViT, it shouldn't freeze anything
@@ -874,11 +785,13 @@ def main_non_distributed(args):
         elif lib == "non":
             # train_loader.sampler.set_epoch(epoch)
             # th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
-            th, t_th = train_non_private_2(
+            th, t_th = train_non_private(
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )
         else:
-            th, t_th = train(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
+            th, t_th = train_efficient_gradient_clipping(
+                device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs
+            )
             privacy_results = privacy_engine.get_privacy_spent()  # type: ignore
             print("Privacy results after training {}".format(privacy_results), flush=True)
         throughs[epoch] = th
@@ -934,3 +847,14 @@ def main_non_distributed(args):
             )
 
         writer.writerow(row)
+
+
+def get_loss_function(lib: str):
+    """
+    Return the loss function (potentially modified reduction for fast_dp, otherwise standard CrossEntropy).
+    """
+    if lib == "private_vision":
+        criterion = nn.CrossEntropyLoss(reduction="none")
+    else:
+        criterion = nn.CrossEntropyLoss()
+    return criterion

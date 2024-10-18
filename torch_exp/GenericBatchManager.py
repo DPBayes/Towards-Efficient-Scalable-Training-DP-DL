@@ -155,7 +155,7 @@ def wrap_data_loader(*, data_loader: DataLoader, max_batch_size: int, signaler: 
     )
 
 
-class MyBatchMemoryManager(object):
+class GenericBatchMemoryManager(object):
     """
     Context manager to manage memory consumption during training.
 
