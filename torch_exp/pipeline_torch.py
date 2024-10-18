@@ -36,7 +36,7 @@ def train_efficient_gradient_clipping(
     device: torch.device,
     model: torch.nn.module,
     lib: str,
-    loader,
+    data_loader,
     optimizer,
     criterion,
     epoch: int,
@@ -47,7 +47,7 @@ def train_efficient_gradient_clipping(
     """
 
     flag = EndingLogicalBatchSignal()
-    print("training {} model with load size {}".format(lib, len(loader)))
+    print("training {} model with load size {}".format(lib, len(data_loader)))
     model.train()
     train_loss = 0
     correct = 0
@@ -62,7 +62,7 @@ def train_efficient_gradient_clipping(
     small_flag = True
     print("Epoch", epoch, "physical batch size", physical_batch_size, flush=True)
     with GenericBatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch_size, signaler=flag
+        data_loader=data_loader, max_physical_batch_size=physical_batch_size, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
             if small_flag:
