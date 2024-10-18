@@ -54,6 +54,9 @@ def privatize_dataloader(data_loader, dist):
 #   epoch. Index of the current epoch
 #   n_acc_steps
 def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batch):
+    """
+    Train one epoch with efficient gradient clipping methods (under DP).
+    """
 
     flag = EndingLogicalBatchSignal()
     print("training {} model with load size {}".format(lib, len(loader)))
@@ -174,6 +177,9 @@ def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batc
 
 
 def train_non_private(device, model, lib, loader, optimizer, criterion, epoch, physical_batch, expected_acc_steps):
+    """
+    Train one epoch without DP.
+    """
 
     flag = EndingLogicalBatchSignal()
     print("training {} model with load size {}".format(lib, len(loader)))
@@ -295,6 +301,9 @@ def train_non_private(device, model, lib, loader, optimizer, criterion, epoch, p
 
 # Opacus needs its own training method, since it needs the BatchMemoryManager.
 def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_batch):
+    """
+    Train one epoch with opacus.
+    """
     print("training opacus model")
     model.train()
     train_loss = 0
@@ -410,9 +419,11 @@ def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_ba
     return throughput, throughput_complete
 
 
-# Test
-# All algorithms and implementations use this test method. It is very general.
+
 def test(device, model, lib, loader, criterion, epoch):
+    """
+    # All algorithms and implementations use this test method. It is very general.
+    """
     model.eval()
     test_loss = 0
     batch_idx = 0
@@ -452,6 +463,9 @@ def test(device, model, lib, loader, criterion, epoch):
 
 
 def main(local_rank, rank, world_size, args):
+    """
+    Distributed training loop (including everything).
+    """
 
     print(args)
     models_dict = {
@@ -636,6 +650,9 @@ def main(local_rank, rank, world_size, args):
 
 
 def main_non_distributed(args):
+    """
+    Non-distributed training loop (including everything).
+    """
 
     print(args)
     models_dict = {
