@@ -138,7 +138,7 @@ def train_efficient_gradient_clipping(
     print(
         "Epoch: ",
         epoch,
-        len(loader),
+        len(data_loader),
         "Train Loss: %.3f | Acc: %.3f%% (%d/%d)"
         % (train_loss / (batch_idx + 1), 100.0 * correct / total, correct, total),
         flush=True,
@@ -168,7 +168,7 @@ def train_non_private(
     device: torch.device,
     model: torch.nn.module,
     lib: str,
-    loader: torch.data.utils.DataLoader,
+    data_loader: torch.data.utils.DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: torch.nn.module,
     epoch: int,
@@ -180,7 +180,7 @@ def train_non_private(
     """
 
     flag = EndingLogicalBatchSignal()
-    print("training {} model with load size {}".format(lib, len(loader)))
+    print("training {} model with load size {}".format(lib, len(data_loader)))
     model.train()
     train_loss = 0
     batch_loss = 0
@@ -198,7 +198,7 @@ def train_non_private(
     actual_batch_size = 0
     print("Epoch", epoch, "physical batch size", physical_batch_size, "expected_acc", expected_acc_steps, flush=True)
     with GenericBatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch_size, signaler=flag
+        data_loader=data_loader, max_physical_batch_size=physical_batch_size, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
             starter_t, ender_t = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
@@ -271,8 +271,8 @@ def train_non_private(
     print(
         "Epoch: ",
         epoch,
-        len(loader),
-        "Train Loss: %.3f | Acc: %.3f%% (%d/%d)" % (train_loss / len(loader), 100.0 * correct / total, correct, total),
+        len(data_loader),
+        "Train Loss: %.3f | Acc: %.3f%% (%d/%d)" % (train_loss / len(data_loader), 100.0 * correct / total, correct, total),
         flush=True,
     )
     print("times updated", times_up, flush=True)
@@ -300,7 +300,7 @@ def train_non_private(
 def train_opacus(
     device: torch.device,
     model: torch.nn.module,
-    loader: opacus.data_loader.DPDataLoader,
+    data_loader: opacus.data_loader.DPDataLoader,
     optimizer: opacus.optimizer.DPOptimizer,
     criterion: torch.nn.module,
     epoch: int,
@@ -324,7 +324,7 @@ def train_opacus(
     loss = None
     print("Epoch", epoch, "physical batch size", physical_batch_size, flush=True)
     with BatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch_size, optimizer=optimizer
+        data_loader=data_loader, max_physical_batch_size=physical_batch_size, optimizer=optimizer
     ) as memory_safe_data_loader:
         # len(memory)
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
@@ -398,7 +398,7 @@ def train_opacus(
     print(
         "Epoch: ",
         epoch,
-        len(loader),
+        len(data_loader),
         "Train Loss: %.3f | Acc: %.3f%% (%d/%d)"
         % (train_loss / (batch_idx + 1), 100.0 * correct / total, correct, total),
         flush=True,
@@ -432,7 +432,7 @@ def test(
     device: torch.device,
     model: torch.nn.module,
     lib: str,
-    loader: torch.data.utils.DataLoader,
+    data_loader: torch.data.utils.DataLoader,
     criterion: torch.nn.module,
     epoch: int,
 ):
@@ -446,7 +446,7 @@ def test(
     total_test = 0
     accs = []
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(loader):
+        for batch_idx, (inputs, targets) in enumerate(data_loader):
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = model(inputs)
             loss = criterion(outputs, targets)
@@ -463,11 +463,11 @@ def test(
 
     acc = np.mean(accs)
 
-    dict_test = {"Test Loss": test_loss / len(loader), "Accuracy": acc}
+    dict_test = {"Test Loss": test_loss / len(data_loader), "Accuracy": acc}
     print(
         "Epoch: ",
         epoch,
-        len(loader),
+        len(data_loader),
         "Test Loss: %.3f | Acc: %.3f " % (dict_test["Test Loss"], dict_test["Accuracy"]),
         flush=True,
     )
