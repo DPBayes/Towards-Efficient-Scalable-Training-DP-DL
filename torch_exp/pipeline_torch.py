@@ -25,7 +25,7 @@ from torch_exp.GenericBatchManager import GenericBatchMemoryManager, EndingLogic
 from privacy_engines import get_privacy_engine, get_privacy_engine_opacus
 from model_functions import count_params, load_model, prepare_vision_model, print_param_shapes
 from seeding_utils import set_seeds
-from data import load_data_cifar
+from data import load_data_cifar, privatize_dataloader
 
 gc.collect()
 torch.cuda.empty_cache()
