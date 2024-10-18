@@ -31,17 +31,6 @@ gc.collect()
 torch.cuda.empty_cache()
 
 
-def get_loss_function(lib):
-    if lib == "private_vision":
-        criterion = nn.CrossEntropyLoss(reduction="none")
-    else:
-        criterion = nn.CrossEntropyLoss()
-    return criterion
-
-
-
-
-
 # Train step.
 #   device. For cuda training
 #   model. The current instance of the model
@@ -826,3 +815,14 @@ def main_non_distributed(args):
             )
 
         writer.writerow(row)
+
+def get_loss_function(lib):
+    """
+    Return the loss function (potentially modified reduction for fast_dp, otherwise standard CrossEntropy).
+    """
+    if lib == "private_vision":
+        criterion = nn.CrossEntropyLoss(reduction="none")
+    else:
+        criterion = nn.CrossEntropyLoss()
+    return criterion
+
