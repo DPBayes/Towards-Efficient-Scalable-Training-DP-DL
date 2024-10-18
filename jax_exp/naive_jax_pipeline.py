@@ -1,5 +1,4 @@
 import os
-from typing import Any
 import tensorflow as tf
 tf.config.experimental.set_visible_devices([], 'GPU')
 
@@ -9,7 +8,6 @@ os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
 
 from datetime import datetime
 import warnings
-import functools
 
 import re
 import numpy as np
@@ -20,13 +18,9 @@ from jax import jit
 import jax.numpy as jnp
 import jax.profiler
 
-#Flax
-import flax.linen as nn
-from flax.core.frozen_dict import unfreeze,freeze,FrozenDict
-
 #Optimizer library for JAX. From it we got the dpsgd optimizer
 import optax
-from optax._src import clipping,base
+from optax._src import clipping
 
 #DP-Accounting - JAX/Flax doesn't have their own as Opacus
 from dp_accounting import dp_event
@@ -34,77 +28,23 @@ from dp_accounting import rdp
 
 #Torch libraries, mainly for data loading
 import torch
-import torchvision
-import torch.utils.data as data
 import torch.backends.cudnn
 
-#Import the modules of the models. For the ResNet models, they came from the private_resnet file
-from transformers import FlaxViTModel,FlaxViTForImageClassification
-from private_vit import ViTModelHead
 from functools import partial
-
-## tqdm for progress bars
-from tqdm.auto import tqdm
 
 # Noise multiplier from Opacus. To calculate the sigma and ensure the epsilon, the privacy budget
 from opacus.accountants.utils import get_noise_multiplier
-from opacus.data_loader import DPDataLoader
 
 #Logging
 from torch.utils.tensorboard.writer import SummaryWriter
 from nvitop.callbacks.tensorboard import add_scalar_dict
 from nvitop import CudaDevice,ResourceMetricCollector
 
-import models_flax
 import time
 from GenericBatchManager import GenericBatchMemoryManager,EndingLogicalBatchSignal
 
-from models import load_model
-from data import load_data_cifar
-
-def print_param_shapes(params, prefix=''):
-    for key, value in params.items():
-        if isinstance(value, dict):
-            print(f"{prefix}{key}:")
-            print_param_shapes(value, prefix + '  ')
-        else:
-            print(f"{prefix}{key}: {value.shape}")
-
-def transform_params(params, params_tf, num_classes):
-    # BiT and JAX models have different naming conventions, so we need to
-    # properly map TF weights to JAX weights
-    params['root_block']['conv_root']['kernel'] = (
-    params_tf['resnet/root_block/standardized_conv2d/kernel'])
-
-    for block in ['block1', 'block2', 'block3', 'block4']:
-        units = set([re.findall(r'unit\d+', p)[0] for p in params_tf.keys()
-                        if p.find(block) >= 0])
-        for unit in units:
-            for i, group in enumerate(['a', 'b', 'c']):
-                params[block][unit][f'conv{i+1}']['kernel'] = (
-                    params_tf[f'resnet/{block}/{unit}/{group}/'
-                            'standardized_conv2d/kernel'])
-                params[block][unit][f'gn{i+1}']['bias'] = (
-                    params_tf[f'resnet/{block}/{unit}/{group}/'
-                            'group_norm/beta'][None, None, None])
-                params[block][unit][f'gn{i+1}']['scale'] = (
-                    params_tf[f'resnet/{block}/{unit}/{group}/'
-                            'group_norm/gamma'][None, None, None])
-
-            projs = [p for p in params_tf.keys()
-                    if p.find(f'{block}/{unit}/a/proj') >= 0]
-            assert len(projs) <= 1
-            if projs:
-                params[block][unit]['conv_proj']['kernel'] = params_tf[projs[0]]
-
-    params['norm-pre-head']['bias'] = (
-        params_tf['resnet/group_norm/beta'][None, None, None])
-    params['norm-pre-head']['scale'] = (
-        params_tf['resnet/group_norm/gamma'][None, None, None])
-
-    params['conv_head']['kernel'] = np.zeros(
-        (params['conv_head']['kernel'].shape[0], num_classes), dtype=np.float32)
-    params['conv_head']['bias'] = np.zeros(num_classes, dtype=np.float32)
+from models import load_model,print_param_shapes
+from data import load_data_cifar,privatize_dataloader
 
 @jit
 def mini_batch_dif_clip2(per_example_grads,l2_norm_clip):
@@ -931,9 +871,6 @@ def set_seeds(seed):
 
     return g_cpu
 
-
-def privatize_dataloader(data_loader):
-    return DPDataLoader.from_data_loader(data_loader)
 
 @jax.jit
 def add_trees(x, y):

@@ -18,7 +18,7 @@ import math
 import time
 
 from models import load_model
-from data import import_data_efficient_mask
+from data import import_data_efficient_mask,normalize_and_reshape
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".90"
@@ -33,10 +33,6 @@ DIMENSION = 224
 @jax.jit
 def add_trees(x, y):
     return jax.tree_util.tree_map(lambda a, b: a + b, x, y)
-
-def normalize_and_reshape(imgs):
-    normalized = ((imgs/255.) - 0.5) / 0.5
-    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
 
 ## Main functions for DP-SGD
 

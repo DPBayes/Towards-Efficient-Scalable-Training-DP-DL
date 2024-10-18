@@ -44,6 +44,18 @@ def transform_params(params, params_tf, num_classes):
     params['conv_head']['bias'] = np.zeros(num_classes, dtype=np.float32)
 
 
+def print_param_shapes(params, prefix=''):
+    for key, value in params.items():
+        if isinstance(value, dict):
+            print(f"{prefix}{key}:")
+            print_param_shapes(value, prefix + '  ')
+        else:
+            print(f"{prefix}{key}: {value.shape}")
+
+def print_param_values(params):
+    jax.tree_util.tree_map(lambda x: print(f"Shape: {x.shape}, Values: {x}"), params)
+    
+
 def load_model(rng,model_name,dimension,num_classes):
     print('load model name',model_name,flush=True)
     main_key, params_key= jax.random.split(key=rng,num=2)

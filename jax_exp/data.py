@@ -2,6 +2,12 @@ import numpy as np
 import jax
 import torchvision
 import torch.utils.data as data
+from opacus.data_loader import DPDataLoader
+
+def normalize_and_reshape(imgs):
+    normalized = ((imgs/255.) - 0.5) / 0.5
+    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
+
 
 def import_data_efficient_mask():
     train_images = np.load("numpy_cifar100/train_images.npy")# .to_device(device=jax.devices("cpu")[0]) Use this with JAX > 0.4.40, with 0.4.30 still doesn't exist
@@ -76,3 +82,6 @@ def load_data_cifar(dimension,batch_size_train,physical_batch_size,num_workers,g
         testset, batch_size=80, shuffle=False,collate_fn=numpy_collate, num_workers=num_workers,generator=generator,worker_init_fn=seed_worker)
 
     return trainloader,testloader
+
+def privatize_dataloader(data_loader):
+    return DPDataLoader.from_data_loader(data_loader)
