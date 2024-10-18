@@ -31,16 +31,7 @@ gc.collect()
 torch.cuda.empty_cache()
 
 
-# Train step.
-#   device. For cuda training
-#   model. The current instance of the model
-#   lib. Library that is being used. It can be fastDP, private_vision, opacus or non
-#   loader. Train loader
-#   optimizer. Optimizer ex. Adam
-#   criterion. Loss function, in this case is CrossEntropyLoss
-#   epoch. Index of the current epoch
-#   n_acc_steps
-def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batch):
+def train_efficient_gradient_clipping(device, model, lib, loader, optimizer, criterion, epoch, physical_batch):
     """
     Train one epoch with efficient gradient clipping methods (under DP).
     """
@@ -577,7 +568,7 @@ def main(local_rank, rank, world_size, args):
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )
         else:
-            th, t_th = train(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
+            th, t_th = train_efficient_gradient_clipping(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
             privacy_results = privacy_engine.get_privacy_spent()  # type: ignore
             print("Privacy results after training {}".format(privacy_results), flush=True)
         throughs[epoch] = th
@@ -759,7 +750,7 @@ def main_non_distributed(args):
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )
         else:
-            th, t_th = train(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
+            th, t_th = train_efficient_gradient_clipping(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
             privacy_results = privacy_engine.get_privacy_spent()  # type: ignore
             print("Privacy results after training {}".format(privacy_results), flush=True)
         throughs[epoch] = th
