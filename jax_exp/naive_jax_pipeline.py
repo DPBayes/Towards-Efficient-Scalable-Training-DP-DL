@@ -4,16 +4,8 @@ import tensorflow as tf
 tf.config.experimental.set_visible_devices([], 'GPU')
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".75"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
-
-# os.environ['XLA_FLAGS'] = (
-#     '--xla_gpu_enable_triton_softmax_fusion=true '
-#     '--xla_gpu_triton_gemm_any=True '
-#     '--xla_gpu_enable_async_collectives=true '
-#     '--xla_gpu_enable_latency_hiding_scheduler=true '
-#     '--xla_gpu_enable_highest_priority_async_stream=true '
-# )
 
 from datetime import datetime
 import warnings
@@ -65,7 +57,18 @@ from nvitop import CudaDevice,ResourceMetricCollector
 
 import models_flax
 import time
-from MyOwnBatchManager import MyBatchMemoryManager,EndingLogicalBatchSignal
+from GenericBatchManager import GenericBatchMemoryManager,EndingLogicalBatchSignal
+
+from models import load_model
+from data import load_data_cifar
+
+def print_param_shapes(params, prefix=''):
+    for key, value in params.items():
+        if isinstance(value, dict):
+            print(f"{prefix}{key}:")
+            print_param_shapes(value, prefix + '  ')
+        else:
+            print(f"{prefix}{key}: {value.shape}")
 
 def transform_params(params, params_tf, num_classes):
     # BiT and JAX models have different naming conventions, so we need to
@@ -157,9 +160,11 @@ class TrainerModule:
                                             interval=1.0)
         
 
-        #self.create_functions()
         self.state = None
-        self.rng = self.load_model()
+        self.rng,self.model,self.params = load_model(self.rng,self.model_name,self.dimension,self.num_classes)
+        print('finish loading',flush=True)
+        print('model loaded')
+        print_param_shapes(self.params)
         print(self.model_name,self.num_classes,self.target_epsilon,'acc steps',self.acc_steps)
 
     def compute_epsilon(self,steps,batch_size, num_examples=60000, target_delta=1e-5,noise_multiplier=0.1):
@@ -352,7 +357,7 @@ class TrainerModule:
 
             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
-            with MyBatchMemoryManager(
+            with GenericBatchMemoryManager(
                 data_loader=trainloader, 
                 max_physical_batch_size=self.physical_bs, 
                 signaler=flag
@@ -646,7 +651,7 @@ class TrainerModule:
             times_up = 0
             acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
-            with MyBatchMemoryManager(
+            with GenericBatchMemoryManager(
                 data_loader=trainloader, 
                 max_physical_batch_size=self.physical_bs, 
                 signaler=flag
@@ -892,137 +897,12 @@ class TrainerModule:
         eval_loss = jnp.mean(jnp.array(losses))
         
         return test_loss/len(data_loader),eval_acc,correct_test,total_test
-    
-    def print_param_shapes(self,params, prefix=''):
-        for key, value in params.items():
-            if isinstance(value, dict):
-                print(f"{prefix}{key}:")
-                self.print_param_shapes(value, prefix + '  ')
-            else:
-                print(f"{prefix}{key}: {value.shape}")
 
     def print_param_values(self,params):
         jax.tree_util.tree_map(lambda x: print(f"Shape: {x.shape}, Values: {x}"), params)
-    
-    def load_model(self):
-        print('load model name',self.model_name,flush=True)
-        main_key, params_key= jax.random.split(key=self.rng,num=2)
-        if self.model_name == 'small':
-            class CNN(nn.Module):
-                """A simple CNN model."""
-
-                @nn.compact
-                def __call__(self, x):
-                    x = nn.Conv(features=64, kernel_size=(7, 7),strides=2)(x)
-                    x = nn.relu(x)
-                    x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-                    #x = nn.Conv(features=64, kernel_size=(3, 3))(x)
-                    #x = nn.relu(x)
-                    #x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
-                    x = x.reshape((x.shape[0], -1))  # flatten
-                    x = nn.Dense(features=256)(x)
-                    x = nn.relu(x)
-                    x = nn.Dense(features=100)(x)
-                    return x
-
-            model = CNN()
-            input_shape = (1,3,self.dimension,self.dimension)
-            #But then, we need to split it in order to get random numbers
-            
-
-            #The init function needs an example of the correct dimensions, to infer the dimensions.
-            #They are not explicitly writen in the module, instead, the model infer them with the first example.
-            x = jax.random.normal(params_key, input_shape)
-
-            main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-            #Initialize the model
-            variables = model.init({'params':init_rng},x)
-            #variables = model.init({'params':main_key}, batch)
-            model.apply(variables, x)
-            self.model = model
-            self.params = variables['params']
-        
-        elif 'vit' in self.model_name:
-            model_name = self.model_name
-            model = FlaxViTForImageClassification.from_pretrained(model_name, num_labels=self.num_classes, return_dict=False, ignore_mismatched_sizes=True)
-            self.model = model
-            self.params = model.params
-
-        else:
-            crop_size = self.dimension
-            model = models_flax.KNOWN_MODELS['BiT-M-R50x1']
-            bit_pretrained_dir = '/models_files/' # Change this with your directory. It might need the whole path, not the relative one.
-            
-            # Load weigths of a BiT model
-            bit_model_file = os.path.join(bit_pretrained_dir, f'{self.model_name}.npz')
-            if not os.path.exists(bit_model_file):
-                raise FileNotFoundError(
-                f'Model file is not found in "{bit_pretrained_dir}" directory.')
-            with open(bit_model_file, 'rb') as f:
-                params_tf = np.load(f)
-                params_tf = dict(zip(params_tf.keys(), params_tf.values()))
-
-            # Build ResNet architecture
-            ResNet = model(num_classes = self.num_classes)
-
-            x = jax.random.normal(params_key, (1, crop_size, crop_size, 3))
-
-            main_rng, init_rng, dropout_init_rng = jax.random.split(main_key, 3)
-
-            #Initialize the model
-            variables = ResNet.init({'params':init_rng},x)
-
-            params = variables['params']
-
-            transform_params(params, params_tf,
-                num_classes=self.num_classes)
-            
-            ResNet.apply({'params':params},x)
-            
-            self.model = ResNet
-            self.params = params
-
-        print('finish loading',flush=True)
-        print('model loaded')
-        self.print_param_shapes(self.params)
-        #self.print_param_values(params)
-        return main_key
         
     def __str__(self) -> str:
         return f"Trainer with seed: {self.seed} and model"
-    
-DATA_MEANS = np.array([0.5, 0.5, 0.5])
-DATA_STD = np.array([0.5,0.5, 0.5])
-
-DATA_MEANS2 = (0.485, 0.456, 0.406)
-DATA_STD2 =  (0.229, 0.224, 0.225)
-def image_to_numpy(img):
-    img = np.array(img, dtype=np.float32)
-    img = (img / 255. - DATA_MEANS) / DATA_STD
-    #There is the need of transposing the image. The image has the right dimension, but inside the ViT, it has a transpose where they move the number of channels to the last dim. So here I inverse 
-    #that operation, so it works later during the pass
-    return np.transpose(img)
-
-def image_to_numpy_wo_t(img):
-    img = np.array(img, dtype=np.float32)
-    img = ((img / 255.) - DATA_MEANS) / DATA_STD
-    img = np.transpose(img,[2,0,1])
-    return img
-
-def image_to_numpy_wo_t2(img):
-    img = np.array(img, dtype=np.float32)
-    img = ((img / 255.) - DATA_MEANS2) / DATA_STD2
-    img = np.transpose(img,[2,0,1])
-    return img
-
-def numpy_collate(batch):
-    if isinstance(batch[0],np.ndarray):
-        return np.stack(batch)
-    elif isinstance(batch[0],(tuple,list)):
-        transposed = zip(*batch)
-        return [numpy_collate(samples) for samples in transposed]
-    else:
-        return np.array(batch)
     
 #Defines each worker seed. Since each worker needs a different seed.
 #The worker_id is a parameter given by the loader, but it is not used inside the method
@@ -1052,39 +932,6 @@ def set_seeds(seed):
     return g_cpu
 
 
-#Load CIFAR data
-def load_data_cifar(ten,dimension,batch_size_train,physical_batch_size,num_workers,generator,norm):
-
-    print('load_data_cifar',batch_size_train,physical_batch_size,num_workers)
-
-    w_batch = batch_size_train
-
-    if norm == 'True':
-        fn = image_to_numpy_wo_t
-    else:
-        fn = image_to_numpy_wo_t2
-
-
-    transformation = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(dimension),
-        fn,
-    ])
-    
-    if ten==10:
-        trainset = torchvision.datasets.CIFAR10(root='../data_cifar10/', train=True, download=True, transform=transformation)
-        testset = torchvision.datasets.CIFAR10(root='../data_cifar10/', train=False, download=True, transform=transformation)
-    else:
-        trainset = torchvision.datasets.CIFAR100(root='../data_cifar100/', train=True, download=True, transform=transformation)
-        testset = torchvision.datasets.CIFAR100(root='../data_cifar100/', train=False, download=True, transform=transformation)
-
-    trainloader = data.DataLoader(
-        trainset, batch_size=w_batch, shuffle=True,collate_fn=numpy_collate, num_workers=num_workers,generator=generator,worker_init_fn=seed_worker)
-
-    testloader = data.DataLoader(
-        testset, batch_size=80, shuffle=False,collate_fn=numpy_collate, num_workers=num_workers,generator=generator,worker_init_fn=seed_worker)
-
-    return trainloader,testloader
-
 def privatize_dataloader(data_loader):
     return DPDataLoader.from_data_loader(data_loader)
 
@@ -1100,13 +947,19 @@ def main(args):
     generator = set_seeds(args.seed)
     
     #Load data
-    trainloader,testloader = load_data_cifar(args.ten,args.dimension,args.bs,args.phy_bs,args.n_workers,generator,args.normalization)
+    trainloader,testloader = load_data_cifar(args.dimension,args.bs,args.phy_bs,args.n_workers,generator,args.normalization,seed_worker)
 
     trainloader = privatize_dataloader(trainloader)
     print('data loaded',flush=True)
     
     #Create Trainer Module, that loads the model and train it
-    trainer = TrainerModule(model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,accountant_method=args.accountant,batch_size=args.bs,physical_bs=args.phy_bs,target_epsilon=args.epsilon,target_delta=args.target_delta,num_classes=args.ten,test=args.test,dimension=args.dimension,clipping_mode=args.clipping_mode)
+    trainer = TrainerModule(
+                            model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,
+                            accountant_method=args.accountant,batch_size=args.bs,
+                            physical_bs=args.phy_bs,target_epsilon=args.epsilon,
+                            target_delta=args.target_delta,num_classes=args.ten,test=args.test,
+                            dimension=args.dimension,clipping_mode=args.clipping_mode
+                            )
     
     #Test initial model without training
     tloss,tacc,cor_eval,tot_eval = trainer.eval_model(testloader)
