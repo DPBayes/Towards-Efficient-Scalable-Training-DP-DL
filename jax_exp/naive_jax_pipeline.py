@@ -9,7 +9,6 @@ os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
 from datetime import datetime
 import warnings
 
-import re
 import numpy as np
 
 #JAX
@@ -34,11 +33,6 @@ from functools import partial
 
 # Noise multiplier from Opacus. To calculate the sigma and ensure the epsilon, the privacy budget
 from opacus.accountants.utils import get_noise_multiplier
-
-#Logging
-from torch.utils.tensorboard.writer import SummaryWriter
-from nvitop.callbacks.tensorboard import add_scalar_dict
-from nvitop import CudaDevice,ResourceMetricCollector
 
 import time
 from GenericBatchManager import GenericBatchMemoryManager,EndingLogicalBatchSignal
@@ -74,8 +68,10 @@ def add_noise_fn(noise_std,rng_key,updates):
 
 class TrainerModule:
 
-    def __init__(self,model_name,lr=0.0005,epochs = 20,seed=1234,max_grad = 0.1,accountant_method='rdp',
-                 batch_size=20,physical_bs = 10,target_epsilon=2,target_delta=1e-5,num_classes = 10,test='train',dimension=224,clipping_mode='private',dataset_size = 50000) -> None:
+    def __init__(self,model_name,lr=0.0005,epochs = 20,seed=1234,max_grad = 0.1,
+                 accountant_method='rdp',batch_size=20,physical_bs = 10,
+                 target_epsilon=2,target_delta=1e-5,num_classes = 10,
+                 dimension=224,clipping_mode='private',dataset_size = 50000) -> None:
         self.lr = lr
         self.seed = seed
         self.epochs = epochs
@@ -94,11 +90,6 @@ class TrainerModule:
 
         timestamp = datetime.now().strftime('%Y%m%d%M')
         print('model at time: ',timestamp,flush=True)
-        self.logger = SummaryWriter('runs_{}/{}_{}_cifar_{}_epsilon_{}_model_{}_{}_{}'.format(target_epsilon,test,clipping_mode,num_classes,target_epsilon,model_name,timestamp,epochs),flush_secs=30)
-        self.collector = ResourceMetricCollector(devices=CudaDevice.all(),
-                                            root_pids={os.getpid()},
-                                            interval=1.0)
-        
 
         self.state = None
         self.rng,self.model,self.params = load_model(self.rng,self.model_name,self.dimension,self.num_classes)
@@ -179,7 +170,6 @@ class TrainerModule:
 
         return cross_loss,acc,cor
     
-    #@partial(jit,static_argnums=0)
     def eval_step_non(self, params, batch):
         # Return the accuracy for a single batch
         loss,acc,cor =self.loss_eval(params,batch)
@@ -243,8 +233,6 @@ class TrainerModule:
 
         #Training
         print('private learning',flush=True)
-        
-        _acc_update = lambda grad, acc : grad + acc
 
         self.calculate_noise(len(trainloader))
         self.init_optimizer()
@@ -253,21 +241,6 @@ class TrainerModule:
         expected_bs = len(trainloader.dataset)/len(trainloader)
         expected_acc_steps = expected_bs // self.physical_bs
         print('expected accumulation steps',expected_acc_steps)
-
-        # @jit
-        # def add_noise_fn(noise_std,rng_key,updates):
-            
-        #     num_vars = len(jax.tree_util.tree_leaves(updates))
-        #     treedef = jax.tree_util.tree_structure(updates)
-        #     new_key,*all_keys = jax.random.split(rng_key, num=num_vars + 1)
-        #     noise = jax.tree_util.tree_map(
-        #         lambda g, k: jax.random.normal(k, shape=g.shape, dtype=g.dtype),
-        #         updates, jax.tree_util.tree_unflatten(treedef, all_keys))
-        #     updates = jax.tree_util.tree_map(
-        #         lambda g, n: (g + noise_std * n),
-        #         updates, noise)
-
-        #     return updates, new_key
         
         comp_time = 0
         gradient_step_ac = 0
@@ -440,8 +413,6 @@ class TrainerModule:
             correct_batch = 0
             batch_idx = 0
 
-            #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-
             for batch_idx, batch in enumerate(trainloader): 
 
                 samples_used += len(batch[0])
@@ -451,16 +422,10 @@ class TrainerModule:
 
                     
                 updates,self.rng = self.add_noise_fn(self.noise_multiplier*self.max_grad_norm,self.rng,grads)
-
-                #old_params = self.params
-                #self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))
                 self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(updates,self.opt_state,self.params))
                 
                 gradient_step_ac += 1
                 print('batch idx',batch_idx,'with size',len(batch[0]))
-                #self.print_param_change(old_params,self.params)
-                #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
-
                 batch_time = time.perf_counter() - start_time
 
                 train_loss += loss
@@ -507,13 +472,11 @@ class TrainerModule:
 
             epoch_time = time.time() - start_time_epoch
             eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-            #eval_loss, eval_acc = self.eval_model(testloader)
             print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
             epsilon,delta = self.compute_epsilon(steps=int(gradient_step_ac),batch_size=expected_bs,target_delta=self.target_delta,noise_multiplier=self.noise_multiplier)
             
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
-            #add_scalar_dict(self.logger,'train_epoch_privacy',privacy_results,global_step=epoch)
             print('privacy results',privacy_results)
 
             throughput_t = (samples_used)/epoch_time
@@ -553,17 +516,14 @@ class TrainerModule:
         #Training
         print('Non private learning virtual')
         
-        #self.calculate_noise(len(trainloader))
         self.init_optimizer()
         print('self optimizer',self.optimizer)
-        #print('self opt state',self.opt_state)
-        #print('noise multiplier',self.noise_multiplier)
+
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
         expected_bs = len(trainloader.dataset)/len(trainloader)
         expected_acc_steps = expected_bs // self.physical_bs
         print('expected accumulation steps',expected_acc_steps,'len dataloader',len(trainloader),'expected_bs',expected_bs)
-        _acc_update = lambda grad, acc : grad + acc / expected_acc_steps
 
         comp_time = 0
         gradient_step_ac = 0
@@ -597,35 +557,22 @@ class TrainerModule:
                 signaler=flag
                 ) as memory_safe_data_loader:
                 for batch_idx, batch in enumerate(memory_safe_data_loader): 
-                    #with self.collector(tag='batch'):
                     batch = (jnp.array(batch[0]), jnp.array(batch[1]))
                     samples_used += len(batch[0])
-                    #print(samples_used)
                     start_time = time.perf_counter()
                     grads,loss,accu,cor = jax.block_until_ready(self.non_private_update(self.params,batch))
                     acc_grads = add_trees(grads,acc_grads)
 
-                    # acc_grads = jax.tree_util.tree_map(
-                    #     lambda x,y: x+y,
-                    #     grads, acc_grads)
                     accumulated_iterations += 1
                     if not flag._check_skip_next_step():
                         print('about to update:')
-                        #acc_grads = jax.tree_util.tree_map(
-                        #    lambda x: x/expected_bs*accumulated_iterations,
-                        #    acc_grads)
-                        #old_params = self.params
                         self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
                         gradient_step_ac += 1
-                        #print('flag queue',flag.skip_queue)
                         #print('here the step should be taken, the opt state:',self.opt_state.gradient_step,'count',gradient_step_ac)
                         print('batch_idx',batch_idx)
-                        #self.print_param_change(old_params,self.params)
                         acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
                         times_up += 1
                         accumulated_iterations = 0 
-
-                    #jax.block_until_ready()
                                                     
                     batch_time = time.perf_counter() - start_time
                     train_loss += loss / expected_acc_steps
@@ -652,7 +599,6 @@ class TrainerModule:
                         metrics['acc'] = np.array([])
                         
                         eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                        #eval_loss, eval_acc = self.eval_model(testloader)
                         print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
                         total_batch = 0
@@ -699,11 +645,11 @@ class TrainerModule:
         #Training
         print('Non private learning')
         
-        #self.calculate_noise(len(trainloader))
         self.init_optimizer()
+
         print('self optimizer',self.optimizer)
         print('self opt state',self.opt_state)
-        #print('noise multiplier',self.noise_multiplier)
+
         throughputs = np.zeros(self.epochs)
         throughputs_t = np.zeros(self.epochs)
         expected_bs = len(trainloader.dataset)/len(trainloader)
@@ -732,11 +678,9 @@ class TrainerModule:
             batch_idx = 0
             
             times_up = 0
-            #acc_grads = jax.tree_util.tree_map(jnp.zeros_like, self.params)
 
             for batch_idx, batch in enumerate(trainloader): 
                 batch = (jnp.array(batch[0]), jnp.array(batch[1]))
-                #with self.collector(tag='batch'):
                 samples_used += len(batch[0])
                 print('batch idx',batch_idx,'with size',len(batch[0]))
                 start_time = time.perf_counter()
@@ -744,10 +688,8 @@ class TrainerModule:
                 acc_grads = jax.tree_util.tree_map(
                         lambda x: x/len(batch[0]),
                         grads)
-                    #old_params = self.params
                 self.params,self.opt_state = jax.block_until_ready(self.grad_acc_update(acc_grads,self.opt_state,self.params))  
                 
-                #jax.block_until_ready()
                                                 
                 batch_time = time.perf_counter() - start_time
                 
@@ -775,7 +717,6 @@ class TrainerModule:
                     metrics['acc'] = np.array([])
                     
                     eval_loss, eval_acc,cor_eval,tot_eval = self.eval_model(testloader)
-                    #eval_loss, eval_acc = self.eval_model(testloader)
                     print('Epoch',epoch,'eval acc',eval_acc,cor_eval,'/',tot_eval,'eval loss',eval_loss,flush=True)
 
                     total_batch = 0
@@ -824,7 +765,6 @@ class TrainerModule:
         test_loss = 0
         total_test = 0
         correct_test = 0
-        batch_idx = 0
         for batch_idx,batch in enumerate(data_loader):
             loss, acc,cor = self.eval_step_non(self.params,batch)
             test_loss += loss
@@ -838,9 +778,6 @@ class TrainerModule:
         
         return test_loss/len(data_loader),eval_acc,correct_test,total_test
 
-    def print_param_values(self,params):
-        jax.tree_util.tree_map(lambda x: print(f"Shape: {x.shape}, Values: {x}"), params)
-        
     def __str__(self) -> str:
         return f"Trainer with seed: {self.seed} and model"
     
@@ -894,7 +831,7 @@ def main(args):
                             model_name=args.model,lr=args.lr,seed=args.seed,epochs=args.epochs,max_grad=args.grad_norm,
                             accountant_method=args.accountant,batch_size=args.bs,
                             physical_bs=args.phy_bs,target_epsilon=args.epsilon,
-                            target_delta=args.target_delta,num_classes=args.ten,test=args.test,
+                            target_delta=args.target_delta,num_classes=args.num_classes,
                             dimension=args.dimension,clipping_mode=args.clipping_mode
                             )
     
