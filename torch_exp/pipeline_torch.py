@@ -605,7 +605,6 @@ def main(local_rank, rank, world_size, args):
     generator_gpu, g_cpu = set_seeds(args.seed, device)
 
     train_loader, test_loader = load_data_cifar(
-        args.ten,
         args.dimension,
         args.bs,
         args.phy_bs,
@@ -622,7 +621,7 @@ def main(local_rank, rank, world_size, args):
         )
     )
 
-    model_s = load_model(args.model, n_classes=args.ten, lib=lib).to(device)
+    model_s = load_model(args.model, n_classes=100, lib=lib).to(device)
     print("device", device, "world size", world_size, "rank", rank)
     if lib == "non":
         model = DDP(model_s, device_ids=[device])
@@ -790,7 +789,6 @@ def main_non_distributed(args):
     generator_gpu, g_cpu = set_seeds(args.seed, device)
 
     train_loader, test_loader = load_data_cifar(
-        args.ten,
         args.dimension,
         args.bs,
         args.phy_bs,
@@ -807,7 +805,7 @@ def main_non_distributed(args):
         )
     )
 
-    model = load_model(args.model, n_classes=args.ten, lib=lib).to(device)
+    model = load_model(args.model, n_classes=100, lib=lib).to(device)
     print("device", device)
 
     # If there are layers not supported by the private vision library. In the case of the ViT, it shouldn't freeze anything

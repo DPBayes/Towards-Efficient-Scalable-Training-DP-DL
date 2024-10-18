@@ -2,8 +2,9 @@ from torchvision import datasets, transforms
 import torch
 from seeding_utils import seed_worker
 
+
 def load_data_cifar(
-    ten, dimension, batch_size_train, physical_batch_size, num_workers, normalization, lib, generator, world_size
+    dimension, batch_size_train, physical_batch_size, num_workers, normalization, lib, generator, world_size
 ):
 
     print("load_data_cifar", lib, batch_size_train, physical_batch_size, num_workers)
@@ -23,12 +24,8 @@ def load_data_cifar(
         ]
     )
 
-    if ten == 10:
-        trainset = datasets.CIFAR10(root="../data_cifar10/", train=True, download=True, transform=transformation)
-        testset = datasets.CIFAR10(root="../data_cifar10/", train=False, download=True, transform=transformation)
-    else:
-        trainset = datasets.CIFAR100(root="../data_cifar100/", train=True, download=True, transform=transformation)
-        testset = datasets.CIFAR100(root="../data_cifar100/", train=False, download=True, transform=transformation)
+    trainset = datasets.CIFAR100(root="../data_cifar100/", train=True, download=True, transform=transformation)
+    testset = datasets.CIFAR100(root="../data_cifar100/", train=False, download=True, transform=transformation)
 
     if lib == "non" and world_size > 1:
         trainloader = torch.utils.data.DataLoader(
