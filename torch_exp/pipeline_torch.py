@@ -1,19 +1,5 @@
-"""
-So, I need multiple Privacy Engine. 
-
-Opacus - Normal DP
-from opacus import PrivacyEngine
-
-Private Vision - Ghost Clipping Vision
-from private_vision import PrivacyEngine
-
-BK: 
-from fastDP import PrivacyEngine
-"""
-
 import os
 
-# import pdb
 import torch
 import numpy as np
 
