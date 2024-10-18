@@ -5,6 +5,7 @@ from datetime import datetime
 import gc
 
 import numpy as np
+import opacus
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
 import time
@@ -21,7 +22,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
-from torch_exp.GenericBatchManager import GenericBatchMemoryManager, EndingLogicalBatchSignal
+from GenericBatchManager import GenericBatchMemoryManager, EndingLogicalBatchSignal
 from privacy_engines import get_privacy_engine, get_privacy_engine_opacus
 from model_functions import count_params, load_model, prepare_vision_model, print_param_shapes
 from seeding_utils import set_seeds
@@ -31,7 +32,16 @@ gc.collect()
 torch.cuda.empty_cache()
 
 
-def train_efficient_gradient_clipping(device, model, lib, loader, optimizer, criterion, epoch, physical_batch):
+def train_efficient_gradient_clipping(
+    device: torch.device,
+    model: torch.nn.module,
+    lib: str,
+    loader,
+    optimizer,
+    criterion,
+    epoch: int,
+    physical_batch: int,
+):
     """
     Train one epoch with efficient gradient clipping methods (under DP).
     """
@@ -154,7 +164,17 @@ def train_efficient_gradient_clipping(device, model, lib, loader, optimizer, cri
     return throughput, throughput_complete
 
 
-def train_non_private(device, model, lib, loader, optimizer, criterion, epoch, physical_batch, expected_acc_steps):
+def train_non_private(
+    device: torch.device,
+    model: torch.nn.module,
+    lib: str,
+    loader: torch.data.utils.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    criterion: torch.nn.module,
+    epoch: int,
+    physical_batch: int,
+    expected_acc_steps: int,
+):
     """
     Train one epoch without DP.
     """
@@ -277,10 +297,18 @@ def train_non_private(device, model, lib, loader, optimizer, criterion, epoch, p
     return throughput, throughput_complete
 
 
-# Opacus needs its own training method, since it needs the BatchMemoryManager.
-def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_batch):
+def train_opacus(
+    device: torch.device,
+    model: torch.nn.module,
+    loader: opacus.data_loader.DPDataLoader,
+    optimizer: opacus.optimizer.DPOptimizer,
+    criterion: torch.nn.module,
+    epoch: int,
+    physical_batch: int,
+):
     """
     Train one epoch with opacus.
+    Opacus needs its own training method, since it needs the BatchMemoryManager.
     """
     print("training opacus model")
     model.train()
@@ -397,8 +425,17 @@ def train_opacus(device, model, loader, optimizer, criterion, epoch, physical_ba
     return throughput, throughput_complete
 
 
+1
 
-def test(device, model, lib, loader, criterion, epoch):
+
+def test(
+    device: torch.device,
+    model: torch.nn.module,
+    lib: str,
+    loader: torch.data.utils.DataLoader,
+    criterion: torch.nn.module,
+    epoch: int,
+):
     """
     # All algorithms and implementations use this test method. It is very general.
     """
@@ -568,7 +605,9 @@ def distributed_main(local_rank, rank, world_size, args):
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )
         else:
-            th, t_th = train_efficient_gradient_clipping(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
+            th, t_th = train_efficient_gradient_clipping(
+                device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs
+            )
             privacy_results = privacy_engine.get_privacy_spent()  # type: ignore
             print("Privacy results after training {}".format(privacy_results), flush=True)
         throughs[epoch] = th
@@ -750,7 +789,9 @@ def main_non_distributed(args):
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )
         else:
-            th, t_th = train_efficient_gradient_clipping(device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs)
+            th, t_th = train_efficient_gradient_clipping(
+                device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs
+            )
             privacy_results = privacy_engine.get_privacy_spent()  # type: ignore
             print("Privacy results after training {}".format(privacy_results), flush=True)
         throughs[epoch] = th
@@ -807,7 +848,8 @@ def main_non_distributed(args):
 
         writer.writerow(row)
 
-def get_loss_function(lib):
+
+def get_loss_function(lib: str):
     """
     Return the loss function (potentially modified reduction for fast_dp, otherwise standard CrossEntropy).
     """
@@ -816,4 +858,3 @@ def get_loss_function(lib):
     else:
         criterion = nn.CrossEntropyLoss()
     return criterion
-
