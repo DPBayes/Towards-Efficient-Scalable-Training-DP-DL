@@ -40,7 +40,7 @@ def train_efficient_gradient_clipping(
     optimizer,
     criterion,
     epoch: int,
-    physical_batch: int,
+    physical_batch_size: int,
 ):
     """
     Train one epoch with efficient gradient clipping methods (under DP).
@@ -60,9 +60,9 @@ def train_efficient_gradient_clipping(
     samples_used = 0
     loss = None
     small_flag = True
-    print("Epoch", epoch, "physical batch size", physical_batch, flush=True)
+    print("Epoch", epoch, "physical batch size", physical_batch_size, flush=True)
     with GenericBatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch, signaler=flag
+        data_loader=loader, max_physical_batch_size=physical_batch_size, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
             if small_flag:
@@ -151,7 +151,7 @@ def train_efficient_gradient_clipping(
         "samples used / batch_idx",
         samples_used / batch_idx,
         "physical batch size",
-        physical_batch,
+        physical_batch_size,
         flush=True,
     )
     throughput = (samples_used) / total_time_epoch
@@ -172,7 +172,7 @@ def train_non_private(
     optimizer: torch.optim.Optimizer,
     criterion: torch.nn.module,
     epoch: int,
-    physical_batch: int,
+    physical_batch_size: int,
     expected_acc_steps: int,
 ):
     """
@@ -196,9 +196,9 @@ def train_non_private(
     times_up = 0
     acc = 0
     actual_batch_size = 0
-    print("Epoch", epoch, "physical batch size", physical_batch, "expected_acc", expected_acc_steps, flush=True)
+    print("Epoch", epoch, "physical batch size", physical_batch_size, "expected_acc", expected_acc_steps, flush=True)
     with GenericBatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch, signaler=flag
+        data_loader=loader, max_physical_batch_size=physical_batch_size, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
             starter_t, ender_t = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
@@ -284,7 +284,7 @@ def train_non_private(
         "samples used / batch_idx",
         samples_used / batch_idx,
         "physical batch size",
-        physical_batch,
+        physical_batch_size,
         flush=True,
     )
     throughput = (samples_used) / total_time_epoch
@@ -304,7 +304,7 @@ def train_opacus(
     optimizer: opacus.optimizer.DPOptimizer,
     criterion: torch.nn.module,
     epoch: int,
-    physical_batch: int,
+    physical_batch_size: int,
 ):
     """
     Train one epoch with opacus.
@@ -322,9 +322,9 @@ def train_opacus(
     total_batch = 0
     samples_used = 0
     loss = None
-    print("Epoch", epoch, "physical batch size", physical_batch, flush=True)
+    print("Epoch", epoch, "physical batch size", physical_batch_size, flush=True)
     with BatchMemoryManager(
-        data_loader=loader, max_physical_batch_size=physical_batch, optimizer=optimizer
+        data_loader=loader, max_physical_batch_size=physical_batch_size, optimizer=optimizer
     ) as memory_safe_data_loader:
         # len(memory)
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
@@ -411,7 +411,7 @@ def train_opacus(
         "samples used / batch_idx",
         samples_used / batch_idx,
         "physical batch size",
-        physical_batch,
+        physical_batch_size,
         flush=True,
     )
     throughput = (samples_used) / total_time_epoch
