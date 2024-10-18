@@ -1,31 +1,28 @@
-import os
+import csv
+from datetime import datetime
 
-import torch
+
+import gc
+
 import numpy as np
-
-
-
+from opacus.utils.batch_memory_manager import BatchMemoryManager
+from opacus.data_loader import DPDataLoader
+from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
+import time
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.utils.data
 import torch.backends.cudnn
 
-from opacus.utils.batch_memory_manager import BatchMemoryManager
-from MyOwnBatchManager import MyBatchMemoryManager, EndingLogicalBatchSignal
-from opacus.data_loader import DPDataLoader
-from datetime import datetime
-
-from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
 from torch.nn.parallel import DistributedDataParallel as DDP
-
+import os
 import warnings
 
 warnings.filterwarnings("ignore")
 
-import csv
-import time
-import gc
 
+from torch_exp.GenericBatchManager import GenericBatchMemoryManager, EndingLogicalBatchSignal
 from privacy_engines import get_privacy_engine, get_privacy_engine_opacus
 from model_functions import count_params, load_model, prepare_vision_model, print_param_shapes
 from seeding_utils import set_seeds
@@ -33,8 +30,6 @@ from data import load_data_cifar
 
 gc.collect()
 torch.cuda.empty_cache()
-
-
 
 
 def get_loss_function(lib):
@@ -75,7 +70,7 @@ def train(device, model, lib, loader, optimizer, criterion, epoch, physical_batc
     loss = None
     small_flag = True
     print("Epoch", epoch, "physical batch size", physical_batch, flush=True)
-    with MyBatchMemoryManager(
+    with GenericBatchMemoryManager(
         data_loader=loader, max_physical_batch_size=physical_batch, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
@@ -198,7 +193,7 @@ def train_non_private(device, model, lib, loader, optimizer, criterion, epoch, p
     acc = 0
     actual_batch_size = 0
     print("Epoch", epoch, "physical batch size", physical_batch, "expected_acc", expected_acc_steps, flush=True)
-    with MyBatchMemoryManager(
+    with GenericBatchMemoryManager(
         data_loader=loader, max_physical_batch_size=physical_batch, signaler=flag
     ) as memory_safe_data_loader:
         for batch_idx, (inputs, targets) in enumerate(memory_safe_data_loader):
