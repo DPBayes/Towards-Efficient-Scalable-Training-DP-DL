@@ -65,7 +65,11 @@ def compute_per_example_gradients(
     return px_grads
 
 @jax.jit
-def process_a_physical_batch(px_grads, mask, C):
+def process_a_physical_batch(
+    px_grads, 
+    mask: jnp.array, 
+    C: float
+):
 
     def clip_mask_and_sum(x, mask, clipping_multiplier):
 
@@ -85,7 +89,12 @@ def process_a_physical_batch(px_grads, mask, C):
     return jax.tree.map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
 
 @jax.jit
-def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
+def noise_addition(
+    rng_key, 
+    accumulated_clipped_grads, 
+    noise_std, 
+    C
+):
     num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
     treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
     new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
@@ -97,7 +106,13 @@ def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
     updates = add_trees(accumulated_clipped_grads, noise)
     return updates
 
-def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
+def calculate_noise(
+    sample_rate: float,
+    target_epsilon: float,
+    target_delta: float,
+    epochs: int,
+    accountant: str
+):
     """Calculate the noise multiplier with Opacus implementation"""
     noise_multiplier = get_noise_multiplier(
         target_epsilon=target_epsilon,
@@ -111,7 +126,11 @@ def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
 
 # ### Parameters for training
 
-def create_train_state(model_name, num_classes, config):
+def create_train_state(
+    model_name: str, 
+    num_classes: int, 
+    config
+):
     """Creates initial `TrainState`."""
     rng,model,params = load_model(jax.random.PRNGKey(0),model_name,DIMENSION,num_classes)
     
@@ -207,26 +226,34 @@ def main(args):
 
     q = 1/math.ceil(len(train_images)/args.bs)
 
-    noise_std = calculate_noise(q,args.epsilon,args.target_delta,args.epochs,args.accountant)
+    noise_std = calculate_noise(
+        q,
+        args.epsilon,
+        args.target_delta,
+        args.epochs,
+        args.accountant
+    )
     C = args.grad_norm
 
     config = namedtuple("Config", ["momentum", "learning_rate"])
     config.momentum = 1
     config.learning_rate = args.lr
+
+    num_classes = args.num_classes
     
     state = create_train_state(
         model_name = args.model,
-        num_labels = 100,
+        num_labels = num_classes,
         config = config,
     )
 
-    num_classes = args.ten
+    
     orig_dimension = 32
-    input_shape = (1, 3, DIMENSION, DIMENSION) # vit
     full_data_size = train_images.shape[0]
     physical_bs = args.phy_bs
-
     num_iter = steps
+    
+    #Dynamic slice, if False, it will slice first and then index inside
     dynamic_slice = True
 
     times = []
@@ -235,10 +262,13 @@ def main(args):
     splits_test = jnp.split(test_images,10)
     splits_labels = jnp.split(test_labels,10)
     private = False
+
+    # Check privacy
     if args.clipping_mode == 'DP':
         private = True
     
     if dynamic_slice and private:
+        
         @jax.jit
         def body_fun(t, args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
@@ -254,7 +284,9 @@ def main(args):
             accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
             return state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks
+    
     elif dynamic_slice and not private:
+        
         @jax.jit
         def body_fun(t, args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
@@ -271,6 +303,8 @@ def main(args):
             return state, accumulated_grads, logical_batch_X, logical_batch_y, masks
 
     else:
+
+        @jax.jit
         def body_fun(t, args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
             
@@ -326,8 +360,9 @@ def main(args):
         
         accumulated_clipped_grads0 = jax.tree.map(lambda x: 0. * x, params)
         
-        start = time.time()        
+        start = time.time()
 
+        #Main loop
         if private:            
             _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(0, n_physical_batches, body_fun, (state, accumulated_clipped_grads0, logical_batch_X, logical_batch_y, masks))
             noisy_grad = noise_addition(noise_rng, accumulated_clipped_grads, noise_std, C)
@@ -349,6 +384,7 @@ def main(args):
         acc_iter = model_evaluation(state,splits_test,splits_labels)
         print('iteration',t,'acc',acc_iter,flush=True)
         
+        #Compute privacy guarantees
         if private:
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(train_images),target_delta=args.target_delta,noise_multiplier=noise_std)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
