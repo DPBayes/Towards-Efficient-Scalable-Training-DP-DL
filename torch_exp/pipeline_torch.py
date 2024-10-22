@@ -6,6 +6,8 @@ import gc
 
 import numpy as np
 import opacus
+import opacus.data_loader
+import opacus.optimizers
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
 import time
@@ -301,7 +303,7 @@ def train_opacus(
     device: torch.device,
     model: nn.Module,
     data_loader: opacus.data_loader.DPDataLoader,
-    optimizer: opacus.optimizer.DPOptimizer,
+    optimizer: opacus.optimizers.optimizer.DPOptimizer,
     criterion: nn.Module,
     epoch: int,
     physical_batch_size: int,
