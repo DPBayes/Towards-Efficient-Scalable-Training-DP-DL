@@ -1,13 +1,9 @@
 
-import jax, optax, itertools, collections, flax
-
-
+import jax, optax
 import jax.numpy as jnp
 import numpy as np
 
-from flax import linen as nn
 from flax.training import train_state
-from flax.jax_utils import prefetch_to_device
 from jax.profiler import start_trace, stop_trace
 from collections import namedtuple
 
@@ -18,31 +14,17 @@ import os
 from dp_accounting import dp_event,rdp
 import warnings
 
-from transformers import FlaxViTForImageClassification
 import math
 import time
+
+from models import load_model
+from data import import_data_efficient_mask,normalize_and_reshape
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"]=".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"]="platform"
 
-DATA_MEANS = np.array([0.5, 0.5, 0.5])
-DATA_STD = np.array([0.5,0.5, 0.5])
-
-## Load data to CPU
-
-train_images = np.load("numpy_cifar100/train_images.npy")# .to_device(device=jax.devices("cpu")[0])
-train_labels = np.load("numpy_cifar100/train_labels.npy")# .to_device(device=jax.devices("cpu")[0])
-
-train_images = jax.device_put(train_images, device=jax.devices("cpu")[0])
-train_labels = jax.device_put(train_labels, device=jax.devices("cpu")[0])
-
-test_images = np.load("numpy_cifar100/test_images.npy")# .to_device(device=jax.devices("cpu")[0])
-test_labels = np.load("numpy_cifar100/test_labels.npy")# .to_device(device=jax.devices("cpu")[0])
-
-test_images = jax.device_put(test_images, device=jax.devices("cpu")[0])
-test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
-
+#Data dimension, necessary global variable
 
 DIMENSION = 224
 
@@ -52,16 +34,14 @@ DIMENSION = 224
 def add_trees(x, y):
     return jax.tree_util.tree_map(lambda a, b: a + b, x, y)
 
-
-
-def normalize_and_reshape(imgs):
-    normalized = ((imgs/255.) - 0.5) / 0.5
-    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
-
 ## Main functions for DP-SGD
 
 @jax.jit
-def compute_per_example_gradients(state, batch_X, batch_y):
+def compute_per_example_gradients(
+    state: train_state.TrainState,
+    batch_X, 
+    batch_y
+):
     """Computes gradients, loss and accuracy for a single batch."""
 
     resizer = lambda x: normalize_and_reshape(x)
@@ -81,7 +61,11 @@ def compute_per_example_gradients(state, batch_X, batch_y):
     return px_grads
 
 @jax.jit
-def process_a_physical_batch(px_grads, mask, C):
+def process_a_physical_batch(
+    px_grads, 
+    mask: jnp.array, 
+    C: float
+):
 
     def clip_mask_and_sum(x, mask, clipping_multiplier):
 
@@ -101,7 +85,12 @@ def process_a_physical_batch(px_grads, mask, C):
     return jax.tree.map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
 
 @jax.jit
-def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
+def noise_addition(
+    rng_key, 
+    accumulated_clipped_grads, 
+    noise_std, 
+    C
+):
     num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
     treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
     new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
@@ -113,44 +102,33 @@ def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
     updates = add_trees(accumulated_clipped_grads, noise)
     return updates
 
+def calculate_noise(
+    sample_rate: float,
+    target_epsilon: float,
+    target_delta: float,
+    epochs: int,
+    accountant: str
+):
+    """Calculate the noise multiplier with Opacus implementation"""
+    noise_multiplier = get_noise_multiplier(
+        target_epsilon=target_epsilon,
+        target_delta=target_delta,
+        sample_rate=sample_rate,
+        epochs=epochs,
+        accountant=accountant
+    )
 
-
-# ## Define a data loader with prefetch
-
-
-def prepare_data(xs):
-    local_device_count = jax.local_device_count()
-
-    def _prepare(x):
-        return x.reshape((local_device_count, -1) + x.shape[1:])
-
-    return jax.tree_util.tree_map(_prepare, xs)
-
-def prefetch_to_device(iterator, size):
-    queue = collections.deque()
-
-    def _prefetch(xs):
-        return jax.device_put(xs, jax.devices("gpu")[0])
-
-    def enqueue(n):  # Enqueues *up to* `n` elements from the iterator.
-        for data in itertools.islice(iterator, n):
-            queue.append(jax.tree_util.tree_map(_prefetch, data))
-
-    enqueue(size)  # Fill up the buffer.
-    while queue:
-        yield queue.popleft()
-        enqueue(1)
-
+    return noise_multiplier
 
 # ### Parameters for training
 
-def create_train_state(model_name, num_labels, config):
+def create_train_state(
+    model_name: str, 
+    num_classes: int, 
+    config
+):
     """Creates initial `TrainState`."""
-
-    model = FlaxViTForImageClassification.from_pretrained(model_name, num_labels=num_labels, return_dict=False, ignore_mismatched_sizes=True)
-
-    # Initialize the model
-    params = model.params
+    rng,model,params = load_model(jax.random.PRNGKey(0),model_name,DIMENSION,num_classes)
     
     # set the optimizer
     tx = optax.adam(config.learning_rate)
@@ -161,7 +139,6 @@ def update_model(state, grads):
     return state.apply_gradients(grads=grads)
 
 # ## NON-DP
-
 
 @jax.jit
 def compute_gradients_non_dp(state, batch_X, batch_y, mask):
@@ -182,20 +159,7 @@ def compute_gradients_non_dp(state, batch_X, batch_y, mask):
 
     return sum_of_grads
 
-def calculate_noise(sample_rate,target_epsilon,target_delta,epochs,accountant):
-    """Calculate the noise multiplier with Opacus implementation"""
-    noise_multiplier = get_noise_multiplier(
-        target_epsilon=target_epsilon,
-        target_delta=target_delta,
-        sample_rate=sample_rate,
-        epochs=epochs,
-        accountant=accountant
-    )
-
-    return noise_multiplier
-
-
-# # fori_loop
+# ## Evaluation
 
 def eval_fn(state, batch_X, batch_y):
     """Computes gradients, loss and accuracy for a single batch."""
@@ -243,7 +207,8 @@ def compute_epsilon(steps,batch_size, num_examples=60000, target_delta=1e-5,nois
     delta = accountant.get_delta(epsilon)
 
     return epsilon,delta
-    
+
+# ## Main Loop
 
 def main(args):
 
@@ -251,30 +216,40 @@ def main(args):
 
     print(args,flush=True)
 
+    train_images,train_labels,test_images,test_labels = import_data_efficient_mask()
+
     steps = args.epochs * math.ceil(len(train_images)/args.bs)
 
     q = 1/math.ceil(len(train_images)/args.bs)
 
-    noise_std = calculate_noise(q,args.epsilon,args.target_delta,args.epochs,args.accountant)
+    noise_std = calculate_noise(
+        q,
+        args.epsilon,
+        args.target_delta,
+        args.epochs,
+        args.accountant
+    )
     C = args.grad_norm
 
     config = namedtuple("Config", ["momentum", "learning_rate"])
     config.momentum = 1
     config.learning_rate = args.lr
+
+    num_classes = args.num_classes
     
     state = create_train_state(
         model_name = args.model,
-        num_labels = 100,
+        num_labels = num_classes,
         config = config,
     )
 
-    num_classes = args.ten
+    
     orig_dimension = 32
-    input_shape = (1, 3, DIMENSION, DIMENSION) # vit
     full_data_size = train_images.shape[0]
     physical_bs = args.phy_bs
-
     num_iter = steps
+    
+    #Dynamic slice, if False, it will slice first and then index inside
     dynamic_slice = True
 
     times = []
@@ -283,10 +258,13 @@ def main(args):
     splits_test = jnp.split(test_images,10)
     splits_labels = jnp.split(test_labels,10)
     private = False
+
+    # Check privacy
     if args.clipping_mode == 'DP':
         private = True
     
     if dynamic_slice and private:
+        
         @jax.jit
         def body_fun(t, args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
@@ -302,7 +280,9 @@ def main(args):
             accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
             return state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks
+    
     elif dynamic_slice and not private:
+        
         @jax.jit
         def body_fun(t, args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
@@ -319,6 +299,8 @@ def main(args):
             return state, accumulated_grads, logical_batch_X, logical_batch_y, masks
 
     else:
+
+        @jax.jit
         def body_fun(t, args):
             state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = args
             
@@ -374,17 +356,15 @@ def main(args):
         
         accumulated_clipped_grads0 = jax.tree.map(lambda x: 0. * x, params)
         
-        start = time.time()        
+        start = time.time()
 
+        #Main loop
         if private:            
-        # _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(0, k, body_fun, (state, accumulated_clipped_grads0, logical_batch_X, logical_batch_y, masks))
             _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(0, n_physical_batches, body_fun, (state, accumulated_clipped_grads0, logical_batch_X, logical_batch_y, masks))
             noisy_grad = noise_addition(noise_rng, accumulated_clipped_grads, noise_std, C)
-        
             # update
             state = jax.block_until_ready(update_model(state, noisy_grad))
         else:
-        # _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(0, k, body_fun, (state, accumulated_clipped_grads0, logical_batch_X, logical_batch_y, masks))
             _, accumulated_grads, *_ = jax.lax.fori_loop(0, n_physical_batches, body_fun, (state, accumulated_clipped_grads0, logical_batch_X, logical_batch_y, masks))
             # update
             state = jax.block_until_ready(update_model(state, accumulated_grads))
@@ -400,6 +380,7 @@ def main(args):
         acc_iter = model_evaluation(state,splits_test,splits_labels)
         print('iteration',t,'acc',acc_iter,flush=True)
         
+        #Compute privacy guarantees
         if private:
             epsilon,delta = compute_epsilon(steps=t+1,batch_size=actual_batch_size,num_examples=len(train_images),target_delta=args.target_delta,noise_multiplier=noise_std)
             privacy_results = {'eps_rdp':epsilon,'delta_rdp':delta}
