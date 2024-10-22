@@ -34,7 +34,7 @@ torch.cuda.empty_cache()
 
 def train_efficient_gradient_clipping(
     device: torch.device,
-    model: nn.module,
+    model: nn.Module,
     lib: str,
     data_loader,
     optimizer,
