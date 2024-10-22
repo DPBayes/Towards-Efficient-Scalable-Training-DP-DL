@@ -34,7 +34,7 @@ torch.cuda.empty_cache()
 
 def train_efficient_gradient_clipping(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.module,
     lib: str,
     data_loader,
     optimizer,
@@ -166,11 +166,11 @@ def train_efficient_gradient_clipping(
 
 def train_non_private(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     lib: str,
     data_loader: torch.data.utils.DataLoader,
     optimizer: torch.optim.Optimizer,
-    criterion: torch.nn.module,
+    criterion: nn.Module,
     epoch: int,
     physical_batch_size: int,
     expected_acc_steps: int,
@@ -299,10 +299,10 @@ def train_non_private(
 
 def train_opacus(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     data_loader: opacus.data_loader.DPDataLoader,
     optimizer: opacus.optimizer.DPOptimizer,
-    criterion: torch.nn.module,
+    criterion: nn.Module,
     epoch: int,
     physical_batch_size: int,
 ):
@@ -430,10 +430,10 @@ def train_opacus(
 
 def test(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     lib: str,
     data_loader: torch.data.utils.DataLoader,
-    criterion: torch.nn.module,
+    criterion: nn.Module,
     epoch: int,
 ):
     """
