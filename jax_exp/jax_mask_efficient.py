@@ -239,7 +239,7 @@ def main(args):
     
     state = create_train_state(
         model_name = args.model,
-        num_labels = num_classes,
+        num_classes = num_classes,
         config = config,
     )
 

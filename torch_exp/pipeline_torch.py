@@ -168,7 +168,7 @@ def train_non_private(
     device: torch.device,
     model: nn.Module,
     lib: str,
-    data_loader: torch.data.utils.DataLoader,
+    data_loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
     criterion: nn.Module,
     epoch: int,
@@ -432,7 +432,7 @@ def test(
     device: torch.device,
     model: nn.Module,
     lib: str,
-    data_loader: torch.data.utils.DataLoader,
+    data_loader: torch.utils.data.DataLoader,
     criterion: nn.Module,
     epoch: int,
 ):

@@ -15,7 +15,7 @@ if __name__ == '__main__':
     parser.add_argument('--clipping_mode', default='non-private', type=str,help='Which clipping algorithm to use.')
     parser.add_argument('--model', default='google/vit-base-patch16-224', type=str,help='The name of the model (for loading from flax).')
     parser.add_argument('--dimension', type=int,default=224,help='The image size needed for the models')
-    parser.add_argument('--num_classes',default=100,type=int)
+    parser.add_argument('--num_classes',default=100,type=int,help='Number of classes in the dataset.')
     parser.add_argument('--n_workers',default=0,type=int)
     parser.add_argument('--phy_bs',default=100,type=int,help='Physical Batch Size')
     parser.add_argument('--accountant',default='rdp',type=str,help='The privacy accountant for DP training')
