@@ -74,7 +74,6 @@ def load_model(model_name, n_classes, lib):
     model = None
     # Model
     if "vit_base_patch16_224" in model_name:
-        # model = timm.create_model('vit_base_patch16_224.augreg_in21k_ft_in1k',pretrained=True,num_classes=int(n_classes))
         model = timm.create_model(model_name, pretrained=True, num_classes=int(n_classes))
         pre_total, pre_train = count_params(model)
         print("pre total parameters {} pre trained parameters {}".format(pre_total, pre_train))
