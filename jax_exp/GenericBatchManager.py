@@ -17,18 +17,18 @@ from typing import List
 
 import numpy as np
 import jax.numpy as jnp
-#from opacus.optimizers import DPOptimizer
 from opacus.utils.uniform_sampler import (
     DistributedUniformWithReplacementSampler,
     UniformWithReplacementSampler,
 )
 from torch.utils.data import BatchSampler, DataLoader, Sampler
 
-class EndingLogicalBatchSignal():
+
+class EndingLogicalBatchSignal:
 
     def __init__(self) -> None:
         self.skip_queue = []
-    
+
     def signal_skip_step(self, do_skip=True):
         """
         Signals the optimizer to skip an optimization step and only perform clipping and
@@ -65,7 +65,6 @@ class EndingLogicalBatchSignal():
                 return self.skip_queue[0]
         else:
             return False
-
 
 
 class BatchSplittingSampler(Sampler[List[int]]):
@@ -126,9 +125,7 @@ class BatchSplittingSampler(Sampler[List[int]]):
 
 
 def wrap_data_loader(
-    *, data_loader: DataLoader, 
-    max_batch_size: int, 
-    signaler: EndingLogicalBatchSignal
+    *, data_loader: DataLoader, max_batch_size: int, signaler: EndingLogicalBatchSignal
 ):
     """
     Replaces batch_sampler in the input data loader with ``BatchSplittingSampler``
@@ -136,7 +133,7 @@ def wrap_data_loader(
     Args:
         data_loader: Wrapper DataLoader
         max_batch_size: max physical batch size we want to emit
-        signaler: EndingLogicalBatchSignal instance used for signaling the end of the logical batch 
+        signaler: EndingLogicalBatchSignal instance used for signaling the end of the logical batch
 
     Returns:
         New DataLoader instance with batch_sampler wrapped in ``BatchSplittingSampler``
@@ -161,7 +158,7 @@ def wrap_data_loader(
     )
 
 
-class MyBatchMemoryManager(object):
+class GenericBatchMemoryManager(object):
     """
     Context manager to manage memory consumption during training.
 
@@ -178,7 +175,7 @@ class MyBatchMemoryManager(object):
     On every step optimizer will check if the batch was the last physical batch comprising
     a logical one, and will change behaviour accordingly.
     In JAX we do not have a optimizer, still, we are using the signaler in the following way:
-    
+
     Example:
         >>> Starts by accumulating, it will always do that.
         >>> If it is not the end, therefore the signaler is True for skipping, then it only accumulates the gradients
