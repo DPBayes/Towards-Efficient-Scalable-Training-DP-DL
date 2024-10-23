@@ -99,7 +99,7 @@ There are different flags:
 - Clipping methods:
 
     ```
-    --clipping_mode <'non-private-virtual','private-mini','private','non-private'>
+    --clipping_mode <'non-private-virtual','private-mini'>
     ```
     
     Choose clipping mode between the non-private and DP.
