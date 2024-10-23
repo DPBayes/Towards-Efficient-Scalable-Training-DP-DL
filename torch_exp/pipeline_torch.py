@@ -6,6 +6,8 @@ import gc
 
 import numpy as np
 import opacus
+import opacus.data_loader
+import opacus.optimizers
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 from opacus.distributed import DifferentiallyPrivateDistributedDataParallel as DPDDP
 import time
@@ -34,7 +36,7 @@ torch.cuda.empty_cache()
 
 def train_efficient_gradient_clipping(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     lib: str,
     data_loader,
     optimizer,
@@ -166,11 +168,11 @@ def train_efficient_gradient_clipping(
 
 def train_non_private(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     lib: str,
-    data_loader: torch.data.utils.DataLoader,
+    data_loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,
-    criterion: torch.nn.module,
+    criterion: nn.Module,
     epoch: int,
     physical_batch_size: int,
     expected_acc_steps: int,
@@ -299,10 +301,10 @@ def train_non_private(
 
 def train_opacus(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     data_loader: opacus.data_loader.DPDataLoader,
-    optimizer: opacus.optimizer.DPOptimizer,
-    criterion: torch.nn.module,
+    optimizer: opacus.optimizers.optimizer.DPOptimizer,
+    criterion: nn.Module,
     epoch: int,
     physical_batch_size: int,
 ):
@@ -430,10 +432,10 @@ def train_opacus(
 
 def test(
     device: torch.device,
-    model: torch.nn.module,
+    model: nn.Module,
     lib: str,
-    data_loader: torch.data.utils.DataLoader,
-    criterion: torch.nn.module,
+    data_loader: torch.utils.data.DataLoader,
+    criterion: nn.Module,
     epoch: int,
 ):
     """
@@ -783,8 +785,6 @@ def main_non_distributed(args):
             privacy_results = {"eps_rdp": privacy_results}
             print("Privacy results after training {}".format(privacy_results), flush=True)
         elif lib == "non":
-            # train_loader.sampler.set_epoch(epoch)
-            # th,t_th = train_non_private(device,model,train_loader,optimizer,criterion,epoch,args.phy_bs,n_acc_steps)
             th, t_th = train_non_private(
                 device, model, lib, train_loader, optimizer, criterion, epoch, args.phy_bs, n_acc_steps
             )

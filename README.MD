@@ -42,7 +42,7 @@ We test two different frameworks, PyTorch and JAX. To execute the experiments, f
 ### PyTorch
 
 ```
-    python3 Towards-Efficient-Scalable-Training-DP-DL/torch_exp/thr_record.py --n_workers 16 --bs 32492 --phy_bs 32 --seed 11 --epochs 2 --grad_norm 4.63 --epsilon 8 --lr 0.00031 --ten 100 --normalization 'True' --clipping_mode 'O-flat' --file 'record_throughput' --torch2 'False' --tf32 'False' --model 'vit_base_patch16_224.augreg_in21k' --distributed 'False'
+    python3 Towards-Efficient-Scalable-Training-DP-DL/torch_exp/thr_record.py --n_workers 16 --bs 32492 --phy_bs 32 --seed 11 --epochs 2 --grad_norm 4.63 --epsilon 8 --lr 0.00031 --normalization 'True' --clipping_mode 'O-flat' --file 'record_throughput' --torch2 'False' --tf32 'False' --model 'vit_base_patch16_224.augreg_in21k' --distributed 'False'
 ```
 
 - Clipping methods:
@@ -93,7 +93,7 @@ There are different flags:
 
 #### Naive Implementation
 ```
-    python3 Towards-Efficient-Scalable-Training-DP-DL/jax_exp/thr_record.py --bs 32492 --phy_bs=64 --file 'record_throughput.csv' --model 'google/vit-base-patch16-224-in21k' --n_workers 16 --epsilon 8 --seed 20 --grad_norm 4.637 --clipping_mode 'DP' --epochs 2 --lr 0.00031
+    python3 Towards-Efficient-Scalable-Training-DP-DL/jax_exp/thr_record.py --bs 32492 --phy_bs=64 --file 'record_throughput.csv' --model 'google/vit-base-patch16-224-in21k' --n_workers 16 --epsilon 8 --seed 20 --grad_norm 4.637 --clipping_mode 'private-mini' --epochs 2 --lr 0.00031
 ```
 
 - Clipping methods:
