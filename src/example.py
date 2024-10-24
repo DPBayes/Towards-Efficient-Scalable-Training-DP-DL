@@ -27,6 +27,7 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
+
 def _parse_arguments(args, dataset_size):
     num_steps = args.epochs * math.ceil(dataset_size / args.bs)
 
@@ -35,8 +36,7 @@ def _parse_arguments(args, dataset_size):
     noise_std = calculate_noise(q, args.epsilon, args.target_delta, args.epochs, args.accountant)
     C = args.grad_norm
 
-    optimizer_config = namedtuple("Config", ["momentum", "learning_rate"])
-    optimizer_config.momentum = 1
+    optimizer_config = namedtuple("Config", ["learning_rate"])
     optimizer_config.learning_rate = args.lr
 
     num_classes = args.num_classes
