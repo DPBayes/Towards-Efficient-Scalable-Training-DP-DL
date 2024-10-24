@@ -3,7 +3,6 @@ import jax.numpy as jnp
 import numpy as np
 
 from flax.training import train_state
-from jax.profiler import start_trace, stop_trace
 from collections import namedtuple
 
 
@@ -70,22 +69,14 @@ def process_a_physical_batch(px_grads, mask: jnp.array, C: float):
 
         return jnp.sum(x * mask * clipping_multiplier, axis=0)
 
-    px_per_param_sq_norms = jax.tree.map(
-        lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1) ** 2, px_grads
-    )
-    flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(
-        px_per_param_sq_norms
-    )
+    px_per_param_sq_norms = jax.tree.map(lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1) ** 2, px_grads)
+    flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
 
-    px_grad_norms = jnp.sqrt(
-        jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0)
-    )
+    px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
 
     clipping_multiplier = jnp.minimum(1.0, C / px_grad_norms)
 
-    return jax.tree.map(
-        lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads
-    )
+    return jax.tree.map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
 
 
 @jax.jit
@@ -128,15 +119,11 @@ def calculate_noise(
 
 def create_train_state(model_name: str, num_classes: int, config):
     """Creates initial `TrainState`."""
-    rng, model, params = load_model(
-        jax.random.PRNGKey(0), model_name, DIMENSION, num_classes
-    )
+    rng, model, params = load_model(jax.random.PRNGKey(0), model_name, DIMENSION, num_classes)
 
     # set the optimizer
     tx = optax.adam(config.learning_rate)
-    return train_state.TrainState.create(
-        apply_fn=jax.jit(model.__call__), params=params, tx=tx
-    )
+    return train_state.TrainState.create(apply_fn=jax.jit(model.__call__), params=params, tx=tx)
 
 
 @jax.jit
@@ -197,9 +184,7 @@ def model_evaluation(state, test_data, test_labels):
     return np.mean(np.array(accs))
 
 
-def compute_epsilon(
-    steps, batch_size, num_examples=60000, target_delta=1e-5, noise_multiplier=0.1
-):
+def compute_epsilon(steps, batch_size, num_examples=60000, target_delta=1e-5, noise_multiplier=0.1):
     """Compute epsilon for DPSGD privacy accounting"""
     if num_examples * target_delta > 1.0:
         warnings.warn("Your delta might be too high.")
@@ -237,9 +222,7 @@ def main(args):
 
     q = 1 / math.ceil(len(train_images) / args.bs)
 
-    noise_std = calculate_noise(
-        q, args.epsilon, args.target_delta, args.epochs, args.accountant
-    )
+    noise_std = calculate_noise(q, args.epsilon, args.target_delta, args.epochs, args.accountant)
     C = args.grad_norm
 
     config = namedtuple("Config", ["momentum", "learning_rate"])
@@ -293,12 +276,8 @@ def main(args):
 
             # compute grads and clip
             per_example_gradients = compute_per_example_gradients(state, pb, yb)
-            sum_of_clipped_grads_from_pb = process_a_physical_batch(
-                per_example_gradients, mask, C
-            )
-            accumulated_clipped_grads = add_trees(
-                accumulated_clipped_grads, sum_of_clipped_grads_from_pb
-            )
+            sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
+            accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
             return (
                 state,
@@ -335,7 +314,6 @@ def main(args):
 
             return state, accumulated_grads, logical_batch_X, logical_batch_y, masks
 
-
     for t in range(num_iter):
         sampling_rng = jax.random.PRNGKey(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
@@ -354,17 +332,13 @@ def main(args):
         indices = jax.random.permutation(batch_rng, full_data_size)[:logical_batch_size]
         logical_batch_X = train_images[indices]
         if private:
-            logical_batch_X = logical_batch_X.reshape(
-                -1, 1, 3, orig_dimension, orig_dimension
-            )
+            logical_batch_X = logical_batch_X.reshape(-1, 1, 3, orig_dimension, orig_dimension)
         logical_batch_y = train_labels[indices]
         #######
 
         # masks
         masks = jax.device_put(
-            jnp.concatenate(
-                [jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]
-            ),
+            jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]),
             jax.devices("cpu")[0],
         )
 
@@ -395,9 +369,7 @@ def main(args):
                     masks,
                 ),
             )
-            noisy_grad = noise_addition(
-                noise_rng, accumulated_clipped_grads, noise_std, C
-            )
+            noisy_grad = noise_addition(noise_rng, accumulated_clipped_grads, noise_std, C)
             # update
             state = jax.block_until_ready(update_model(state, noisy_grad))
         else:
@@ -448,4 +420,3 @@ def main(args):
     print("accuracy at end of training", acc_last, flush=True)
     thr = np.mean(np.array(logical_batch_sizes) / np.array(times))
     return thr, acc_last
-
