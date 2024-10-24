@@ -5,15 +5,9 @@ import numpy as np
 from flax.training import train_state
 
 
-import os
-
-
 from models import load_model
 from data import normalize_and_reshape
 
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
-os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
 ## define some jax utility functions
 
