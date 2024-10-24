@@ -15,10 +15,6 @@ os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
-# Data dimension, necessary global variable
-
-DIMENSION = 224
-
 ## define some jax utility functions
 
 
@@ -91,9 +87,9 @@ def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
 ### Parameters for training
 
 
-def create_train_state(model_name: str, num_classes: int, config):
+def create_train_state(model_name: str, num_classes: int, image_dimension : int, config):
     """Creates initial `TrainState`."""
-    rng, model, params = load_model(jax.random.PRNGKey(0), model_name, DIMENSION, num_classes)
+    rng, model, params = load_model(jax.random.PRNGKey(0), model_name, image_dimension, num_classes)
 
     # set the optimizer
     tx = optax.adam(config.learning_rate)

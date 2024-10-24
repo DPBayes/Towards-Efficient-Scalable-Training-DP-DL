@@ -28,6 +28,9 @@ os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 ## Main Loop
 
+# Data dimension, necessary global variable
+DIMENSION = 224
+
 
 def main(args):
 
@@ -53,6 +56,7 @@ def main(args):
     state = create_train_state(
         model_name=args.model,
         num_classes=num_classes,
+        image_dimension=DIMENSION,
         config=config,
     )
 
@@ -141,19 +145,19 @@ def main(args):
 
         # Main loop
         _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
-                0,
-                n_physical_batches,
-                body_fun,
-                (
-                    state,
-                    accumulated_clipped_grads0,
-                    logical_batch_X,
-                    logical_batch_y,
-                    masks,
-                ),
-            )
+            0,
+            n_physical_batches,
+            body_fun,
+            (
+                state,
+                accumulated_clipped_grads0,
+                logical_batch_X,
+                logical_batch_y,
+                masks,
+            ),
+        )
         noisy_grad = noise_addition(noise_rng, accumulated_clipped_grads, noise_std, C)
-        
+
         # update
         state = jax.block_until_ready(update_model(state, noisy_grad))
 
