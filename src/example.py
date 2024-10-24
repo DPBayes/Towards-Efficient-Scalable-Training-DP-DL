@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from collections import namedtuple
-
+import argparse
 
 import os
 
@@ -26,11 +26,6 @@ from jax_mask_efficient import (
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
-## Main Loop
-
-# Data dimension, necessary global variable
-DIMENSION = 224
-
 
 def _parse_arguments(args, dataset_size):
     num_steps = args.epochs * math.ceil(dataset_size / args.bs)
@@ -40,17 +35,28 @@ def _parse_arguments(args, dataset_size):
     noise_std = calculate_noise(q, args.epsilon, args.target_delta, args.epochs, args.accountant)
     C = args.grad_norm
 
-    config = namedtuple("Config", ["momentum", "learning_rate"])
-    config.momentum = 1
-    config.learning_rate = args.lr
+    optimizer_config = namedtuple("Config", ["momentum", "learning_rate"])
+    optimizer_config.momentum = 1
+    optimizer_config.learning_rate = args.lr
 
     num_classes = args.num_classes
 
     physical_bs = args.phy_bs
 
-    orig_dimension = 32
+    orig_image_dimension, resized_image_dimension = 32, 224
 
-    return num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension
+    return (
+        num_steps,
+        noise_std,
+        C,
+        optimizer_config,
+        num_classes,
+        q,
+        physical_bs,
+        dataset_size,
+        orig_image_dimension,
+        resized_image_dimension,
+    )
 
 
 def main(args):
@@ -61,15 +67,24 @@ def main(args):
 
     train_images, train_labels, test_images, test_labels = import_data_efficient_mask()
 
-    num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension = _parse_arguments(
-        args=args, dataset_size=len(train_images)
-    )
+    (
+        num_steps,
+        noise_std,
+        C,
+        optimizer_config,
+        num_classes,
+        q,
+        physical_bs,
+        dataset_size,
+        orig_image_dimension,
+        resized_image_dimension,
+    ) = _parse_arguments(args=args, dataset_size=len(train_images))
 
     state = create_train_state(
         model_name=args.model,
         num_classes=num_classes,
-        image_dimension=DIMENSION,
-        config=config,
+        image_dimension=resized_image_dimension,
+        optimizer_config=optimizer_config,
     )
 
     times = []
@@ -92,7 +107,7 @@ def main(args):
         pb = jax.lax.dynamic_slice(
             logical_batch_X,
             (start_idx, 0, 0, 0, 0),
-            (physical_bs, 1, 3, orig_dimension, orig_dimension),
+            (physical_bs, 1, 3, orig_image_dimension, orig_image_dimension),
         )
         yb = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
         mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
@@ -127,7 +142,7 @@ def main(args):
         # take the logical batch
         indices = jax.random.permutation(batch_rng, dataset_size)[:logical_batch_size]
         logical_batch_X = train_images[indices]
-        logical_batch_X = logical_batch_X.reshape(-1, 1, 3, orig_dimension, orig_dimension)
+        logical_batch_X = logical_batch_X.reshape(-1, 1, 3, orig_image_dimension, orig_image_dimension)
         logical_batch_y = train_labels[indices]
         #######
 
