@@ -31,6 +31,7 @@ os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 # Data dimension, necessary global variable
 DIMENSION = 224
 
+
 def _parse_arguments(args, dataset_size):
     num_steps = args.epochs * math.ceil(dataset_size / args.bs)
 
@@ -51,6 +52,7 @@ def _parse_arguments(args, dataset_size):
 
     return num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension
 
+
 def main(args):
 
     jax.clear_caches()
@@ -59,7 +61,9 @@ def main(args):
 
     train_images, train_labels, test_images, test_labels = import_data_efficient_mask()
 
-    num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension = _parse_arguments(args=args, dataset_size=len(train_images))
+    num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension = _parse_arguments(
+        args=args, dataset_size=len(train_images)
+    )
 
     state = create_train_state(
         model_name=args.model,
