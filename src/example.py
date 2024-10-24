@@ -31,18 +31,10 @@ os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 # Data dimension, necessary global variable
 DIMENSION = 224
 
+def _parse_arguments(args, dataset_size):
+    num_steps = args.epochs * math.ceil(dataset_size / args.bs)
 
-def main(args):
-
-    jax.clear_caches()
-
-    print(args, flush=True)
-
-    train_images, train_labels, test_images, test_labels = import_data_efficient_mask()
-
-    num_steps = args.epochs * math.ceil(len(train_images) / args.bs)
-
-    q = 1 / math.ceil(len(train_images) / args.bs)
+    q = 1 / math.ceil(dataset_size / args.bs)
 
     noise_std = calculate_noise(q, args.epsilon, args.target_delta, args.epochs, args.accountant)
     C = args.grad_norm
@@ -53,16 +45,28 @@ def main(args):
 
     num_classes = args.num_classes
 
+    physical_bs = args.phy_bs
+
+    orig_dimension = 32
+
+    return num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension
+
+def main(args):
+
+    jax.clear_caches()
+
+    print(args, flush=True)
+
+    train_images, train_labels, test_images, test_labels = import_data_efficient_mask()
+
+    num_steps, noise_std, C, config, num_classes, q, physical_bs, dataset_size, orig_dimension = _parse_arguments(args=args, dataset_size=len(train_images))
+
     state = create_train_state(
         model_name=args.model,
         num_classes=num_classes,
         image_dimension=DIMENSION,
         config=config,
     )
-
-    orig_dimension = 32
-    full_data_size = train_images.shape[0]
-    physical_bs = args.phy_bs
 
     times = []
     logical_batch_sizes = []
@@ -109,7 +113,7 @@ def main(args):
         #######
         # poisson subsample
         actual_batch_size = jax.device_put(
-            jax.random.bernoulli(binomial_rng, shape=(full_data_size,), p=q).sum(),
+            jax.random.bernoulli(binomial_rng, shape=(dataset_size,), p=q).sum(),
             jax.devices("cpu")[0],
         )
         n_physical_batches = actual_batch_size // physical_bs + 1
@@ -117,7 +121,7 @@ def main(args):
         n_masked_elements = logical_batch_size - actual_batch_size
 
         # take the logical batch
-        indices = jax.random.permutation(batch_rng, full_data_size)[:logical_batch_size]
+        indices = jax.random.permutation(batch_rng, dataset_size)[:logical_batch_size]
         logical_batch_X = train_images[indices]
         logical_batch_X = logical_batch_X.reshape(-1, 1, 3, orig_dimension, orig_dimension)
         logical_batch_y = train_labels[indices]
