@@ -6,17 +6,14 @@ from flax.training import train_state
 from collections import namedtuple
 
 
-from opacus.accountants.utils import get_noise_multiplier
-
 import os
-from dp_accounting import dp_event, rdp
-import warnings
 
 import math
 import time
 
 from models import load_model
 from data import import_data_efficient_mask, normalize_and_reshape
+from dp_accounting_utils import compute_epsilon
 
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
@@ -95,25 +92,6 @@ def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
     return updates
 
 
-def calculate_noise(
-    sample_rate: float,
-    target_epsilon: float,
-    target_delta: float,
-    epochs: int,
-    accountant: str,
-):
-    """Calculate the noise multiplier with Opacus implementation"""
-    noise_multiplier = get_noise_multiplier(
-        target_epsilon=target_epsilon,
-        target_delta=target_delta,
-        sample_rate=sample_rate,
-        epochs=epochs,
-        accountant=accountant,
-    )
-
-    return noise_multiplier
-
-
 ### Parameters for training
 
 
@@ -182,29 +160,6 @@ def model_evaluation(state, test_data, test_labels):
         accs.append(eval_fn(state, pb, yb))
 
     return np.mean(np.array(accs))
-
-
-def compute_epsilon(steps, batch_size, num_examples=60000, target_delta=1e-5, noise_multiplier=0.1):
-    """Compute epsilon for DPSGD privacy accounting"""
-    if num_examples * target_delta > 1.0:
-        warnings.warn("Your delta might be too high.")
-
-    print("steps", steps, flush=True)
-
-    print("noise multiplier", noise_multiplier, flush=True)
-
-    q = batch_size / float(num_examples)
-    orders = list(jnp.linspace(1.1, 10.9, 99)) + list(range(11, 64))
-    accountant = rdp.rdp_privacy_accountant.RdpAccountant(orders)  # type: ignore
-    accountant.compose(
-        dp_event.PoissonSampledDpEvent(q, dp_event.GaussianDpEvent(noise_multiplier)),
-        steps,
-    )
-
-    epsilon = accountant.get_epsilon(target_delta)
-    delta = accountant.get_delta(epsilon)
-
-    return epsilon, delta
 
 
 ## Main Loop
