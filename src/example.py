@@ -40,7 +40,7 @@ def main(args):
 
     train_images, train_labels, test_images, test_labels = import_data_efficient_mask()
 
-    steps = args.epochs * math.ceil(len(train_images) / args.bs)
+    num_steps = args.epochs * math.ceil(len(train_images) / args.bs)
 
     q = 1 / math.ceil(len(train_images) / args.bs)
 
@@ -63,7 +63,6 @@ def main(args):
     orig_dimension = 32
     full_data_size = train_images.shape[0]
     physical_bs = args.phy_bs
-    num_iter = steps
 
     times = []
     logical_batch_sizes = []
@@ -103,7 +102,7 @@ def main(args):
             masks,
         )
 
-    for t in range(num_iter):
+    for t in range(num_steps):
         sampling_rng = jax.random.PRNGKey(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
 
