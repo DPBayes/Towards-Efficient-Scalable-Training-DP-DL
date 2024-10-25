@@ -98,12 +98,12 @@ def train_efficient_gradient_clipping(
                     optimizer.step()
                     optimizer.zero_grad()
 
+            ender.record()  # type: ignore
             torch.cuda.synchronize()
             end_time = time.perf_counter()
 
             total_time_prf = end_time - start_time
-            ender.record()  # type: ignore
-
+            
             curr_time = starter.elapsed_time(ender) / 1000
             # total_time_epoch += curr_time
             total_time_epoch += total_time_prf
@@ -131,8 +131,9 @@ def train_efficient_gradient_clipping(
                 correct += correct_batch
                 total_batch = 0
                 correct_batch = 0
-        torch.cuda.synchronize()
+        
         ender_t.record()  # type: ignore
+        torch.cuda.synchronize()
 
         curr_t = starter_t.elapsed_time(ender_t) / 1000
         total_time += curr_t
