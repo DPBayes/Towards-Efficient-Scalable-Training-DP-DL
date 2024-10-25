@@ -106,7 +106,7 @@ def train_efficient_gradient_clipping(
 
             curr_time = starter.elapsed_time(ender) / 1000
             # total_time_epoch += curr_time
-            total_time_epoch = total_time_prf
+            total_time_epoch += total_time_prf
             if lib == "private_vision":
                 train_loss += loss.mean().item()
             else:
