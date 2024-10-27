@@ -55,6 +55,23 @@ def compute_physical_batch_per_example_gradients(
 
 @jax.jit
 def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, C: float):
+    """Clip and accumulate per-example gradients of a physical batch.
+
+    Parameters
+    ----------
+    px_grads : jax.typing.ArrayLike
+        The per-sample gradients of the physical batch.
+    mask : jax.typing.ArrayLike
+        A mask to filter out gradients that are discarded as a small number of per-examples gradients
+        is only computed to keep the physical batch size fixed.
+    C : float
+        The clipping norm of DP-SGD.
+    
+    Returns
+    -------
+    acc_px_grads: jax.typing.ArrayLike
+        The clipped and accumulated per-example gradients after discarding the additional per-example gradients.
+    """
 
     def _clip_mask_and_sum(x: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, clipping_multiplier: float):
 
