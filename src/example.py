@@ -19,7 +19,7 @@ from jax_mask_efficient import (
     add_trees,
     clip_and_accumulate_physical_batch,
     model_evaluation,
-    noise_addition,
+    add_Gaussian_noise,
     update_model,
 )
 
@@ -178,7 +178,7 @@ def main(args):
                 masks,
             ),
         )
-        noisy_grad = noise_addition(noise_rng, accumulated_clipped_grads, noise_std, C)
+        noisy_grad = add_Gaussian_noise(noise_rng, accumulated_clipped_grads, noise_std, C)
 
         # update
         state = jax.block_until_ready(update_model(state, noisy_grad))

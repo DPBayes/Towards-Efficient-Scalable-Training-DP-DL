@@ -98,7 +98,7 @@ def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax
 
 
 @jax.jit
-def noise_addition(rng_key: jax.Array, accumulated_clipped_grads: jax.typing.ArrayLike, noise_std: float, C: float):
+def add_Gaussian_noise(rng_key: jax.Array, accumulated_clipped_grads: jax.typing.ArrayLike, noise_std: float, C: float):
     num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
     treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
     new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
