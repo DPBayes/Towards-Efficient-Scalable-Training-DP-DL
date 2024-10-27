@@ -4,9 +4,6 @@ import numpy as np
 
 from flax.training import train_state
 
-from collections import namedtuple
-
-from models import load_model
 from data import normalize_and_reshape
 
 
@@ -131,19 +128,6 @@ def add_Gaussian_noise(
 
     updates = add_trees(accumulated_clipped_grads, noise)
     return updates
-
-
-### Parameters for training
-
-
-def create_train_state(model_name: str, num_classes: int, image_dimension: int, config: namedtuple):
-    """Creates initial `TrainState`."""
-    rng, model, params = load_model(jax.random.PRNGKey(0), model_name, image_dimension, num_classes)
-
-    # set the optimizer
-    tx = optax.adam(config.learning_rate)
-    return train_state.TrainState.create(apply_fn=jax.jit(model.__call__), params=params, tx=tx)
-
 
 @jax.jit
 def update_model(state: train_state.TrainState, grads):
