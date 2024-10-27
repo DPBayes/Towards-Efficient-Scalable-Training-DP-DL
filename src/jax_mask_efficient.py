@@ -42,6 +42,75 @@ def poisson_sample_logical_batch_size(binomial_rng: jax.Array, dataset_size: int
     return logical_batch_size
 
 
+def get_technical_logical_batch(
+    batch_rng: jax.Array, tech_logical_batch_size: int, train_X: jax.typing.ArrayLike, train_y: jax.typing.ArrayLike
+):
+    """Samples random technical logical batch from the data that is slightly larger than the actual logical bs
+        but can be divided into n physical batches.
+
+    Parameters
+    ----------
+    batch_rng : jax.Array
+        The PRNG key array for sampling the batch.
+    tech_logical_batch_size : int
+        The size of the sampled batch (so that it can be divided into n physical batches).
+    train_X : jax.typing.ArrayLike
+        The training features.
+    train_y : jax.typing.ArrayLike
+        The training labels.
+
+    Returns
+    -------
+    tech_logical_batch_X : jax.typing.ArrayLike
+        The technical training features.
+    tech_logical_batch_y : jax.typing.ArrayLike
+        The technical logical batch training labels.
+    """
+
+    # take the logical batch
+    dataset_size = len(train_y)
+    indices = jax.random.permutation(batch_rng, dataset_size)[:tech_logical_batch_size]
+    tech_logical_batch_X = train_X[indices]
+    tech_logical_batch_y = train_y[indices]
+
+    return tech_logical_batch_X, tech_logical_batch_y
+
+
+def setup_physical_batches(
+    actual_logical_batch_size: int,
+    physical_bs: int,
+):
+    """Computed the required number of physical batches so that n (full) physical batches are created.
+    This means that some elements are later thrown away.
+
+    Parameters
+    ----------
+    actual_batch_size : int
+        The actual sampled logical batch size.
+    physical_bs : int
+        The physical batch size (depends on model size and memory).
+
+    Returns
+    -------
+    masks : jax.typing.ArrayLike
+        A mask to throw away n_masked_elements later as they are only required for computational reasons.
+    n_physical_batches : int
+        The number of physical batches.
+    """
+    # ensure full physical batches of size `physical_bs` each
+    n_physical_batches = actual_logical_batch_size // physical_bs + 1
+    tech_logical_batch_size = n_physical_batches * physical_bs
+
+    # masks (throw away n_masked_elements later as they are only required for computing)
+    n_masked_elements = tech_logical_batch_size - actual_logical_batch_size
+    masks = jax.device_put(
+        jnp.concatenate([jnp.ones(actual_logical_batch_size), jnp.zeros(n_masked_elements)]),
+        jax.devices("cpu")[0],
+    )
+
+    return masks, n_physical_batches
+
+
 @jax.jit
 def compute_physical_batch_per_example_gradients(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int

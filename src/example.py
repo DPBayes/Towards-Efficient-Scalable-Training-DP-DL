@@ -19,9 +19,11 @@ from jax_mask_efficient import (
     compute_physical_batch_per_example_gradients,
     add_trees,
     clip_and_accumulate_physical_batch,
+    get_technical_logical_batch,
     model_evaluation,
     add_Gaussian_noise,
     poisson_sample_logical_batch_size,
+    setup_physical_batches,
     update_model,
 )
 
@@ -128,33 +130,33 @@ def main(args):
         )
 
     for t in range(num_steps):
-        #TODO: Is this deprecated? See https://jax.readthedocs.io/en/latest/_autosummary/jax.random.PRNGKey.html.
+        # TODO: Is this deprecated? See https://jax.readthedocs.io/en/latest/_autosummary/jax.random.PRNGKey.html.
         sampling_rng = jax.random.PRNGKey(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
 
         #######
         # poisson subsample
-        actual_batch_size = poisson_sample_logical_batch_size(binomial_rng=binomial_rng, dataset_size=dataset_size, q=q)
-        n_physical_batches = actual_batch_size // physical_bs + 1
-        logical_batch_size = n_physical_batches * physical_bs
-        n_masked_elements = logical_batch_size - actual_batch_size
-
-        # take the logical batch
-        indices = jax.random.permutation(batch_rng, dataset_size)[:logical_batch_size]
-        logical_batch_X = train_images[indices]
-        logical_batch_X = logical_batch_X.reshape(-1, 1, 3, orig_image_dimension, orig_image_dimension)
-        logical_batch_y = train_labels[indices]
-        #######
-
-        # masks
-        masks = jax.device_put(
-            jnp.concatenate([jnp.ones(actual_batch_size), jnp.zeros(n_masked_elements)]),
-            jax.devices("cpu")[0],
+        actual_batch_size = poisson_sample_logical_batch_size(
+            binomial_rng=binomial_rng, dataset_size=dataset_size, q=q
         )
 
+        # determine tech_logical_bs so that there are full physical batches
+        # and create appropriate masks to mask out unnessary elements later
+        masks, n_physical_batches = setup_physical_batches(
+            actual_batch_size=actual_batch_size,
+            physical_bs=physical_bs,
+        )
+
+        # get random technical logical batches that are slighly larger actual batch size
+        tech_logical_batch_X, tech_logical_batch_y = get_technical_logical_batch(
+            batch_rng=batch_rng, tech_logical_batch_size=len(masks), train_X=train_images, train_y=train_labels
+        )
+
+        tech_logical_batch_X = tech_logical_batch_X.reshape(-1, 1, 3, orig_image_dimension, orig_image_dimension)
+
         # cast to GPU
-        logical_batch_X = jax.device_put(logical_batch_X, jax.devices("gpu")[0])
-        logical_batch_y = jax.device_put(logical_batch_y, jax.devices("gpu")[0])
+        tech_logical_batch_X = jax.device_put(tech_logical_batch_X, jax.devices("gpu")[0])
+        tech_logical_batch_y = jax.device_put(tech_logical_batch_y, jax.devices("gpu")[0])
         masks = jax.device_put(masks, jax.devices("gpu")[0])
 
         print("##### Starting gradient accumulation #####", flush=True)
@@ -173,8 +175,8 @@ def main(args):
             (
                 state,
                 accumulated_clipped_grads0,
-                logical_batch_X,
-                logical_batch_y,
+                tech_logical_batch_X,
+                tech_logical_batch_y,
                 masks,
             ),
         )
@@ -187,9 +189,9 @@ def main(args):
         duration = end - start
 
         times.append(duration)
-        logical_batch_sizes.append(logical_batch_size)
+        logical_batch_sizes.append(actual_batch_size)
 
-        print(logical_batch_size / duration, flush=True)
+        print(actual_batch_size / duration, flush=True)
 
         acc_iter = model_evaluation(state, splits_test, splits_labels)
         print("iteration", t, "acc", acc_iter, flush=True)
@@ -209,7 +211,7 @@ def main(args):
 
     print("times \n", times, flush=True)
 
-    print("batch sizes \n ", logical_batch_size, flush=True)
+    print("batch sizes \n ", actual_batch_size, flush=True)
 
     print("accuracy at end of training", acc_last, flush=True)
     thr = np.mean(np.array(logical_batch_sizes) / np.array(times))
