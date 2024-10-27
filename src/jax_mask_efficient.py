@@ -45,7 +45,6 @@ def compute_physical_batch_per_example_gradients(
 
     def loss_fn(params, X, y):
         resized_X = resizer(X)
-        print(resized_X.shape, flush=True)
         logits = state.apply_fn(resized_X, params=params)[0]
         one_hot = jax.nn.one_hot(y, num_classes=num_classes)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
