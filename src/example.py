@@ -17,7 +17,7 @@ from jax_mask_efficient import (
     create_train_state,
     compute_physical_batch_per_example_gradients,
     add_trees,
-    process_a_physical_batch,
+    clip_and_accumulate_physical_batch,
     model_evaluation,
     noise_addition,
     update_model,
@@ -114,7 +114,7 @@ def main(args):
 
         # compute grads and clip
         per_example_gradients = compute_physical_batch_per_example_gradients(state, pb, yb)
-        sum_of_clipped_grads_from_pb = process_a_physical_batch(per_example_gradients, mask, C)
+        sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(per_example_gradients, mask, C)
         accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
         return (

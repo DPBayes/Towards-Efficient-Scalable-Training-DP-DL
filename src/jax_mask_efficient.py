@@ -54,7 +54,7 @@ def compute_physical_batch_per_example_gradients(
 
 
 @jax.jit
-def process_a_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, C: float):
+def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, C: float):
 
     def _clip_mask_and_sum(x: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, clipping_multiplier: float):
 
