@@ -22,10 +22,19 @@ def add_trees(x, y):
 
 
 @jax.jit
-def compute_per_example_gradients(
+def compute_physical_batch_per_example_gradients(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike
 ):
-    """Computes gradients, loss and accuracy for a single batch."""
+    """Computes the per-example gradients for a physical batch.
+
+    Args:
+        state (train_state.TrainState): The model train state.
+        batch_X (jax.typing.ArrayLike): The features of the physical batch.
+        batch_y (jax.typing.ArrayLike): The labels of the physical batch.
+
+    Returns:
+        px_grads (jax.typing.ArrayLike): The per-sample gradients of the physical batch.
+    """
 
     resizer = lambda x: normalize_and_reshape(x)
 
