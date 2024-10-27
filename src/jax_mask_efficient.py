@@ -38,7 +38,7 @@ def compute_physical_batch_per_example_gradients(
 
     Returns
     -------
-    px_grads : jax.typing.ArrayLike 
+    px_grads : jax.typing.ArrayLike
         The per-sample gradients of the physical batch.
     """
 
@@ -72,7 +72,7 @@ def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax
         is only computed to keep the physical batch size fixed.
     C : float
         The clipping norm of DP-SGD.
-    
+
     Returns
     -------
     acc_px_grads: jax.typing.ArrayLike
@@ -98,7 +98,27 @@ def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax
 
 
 @jax.jit
-def add_Gaussian_noise(rng_key: jax.Array, accumulated_clipped_grads: jax.typing.ArrayLike, noise_std: float, C: float):
+def add_Gaussian_noise(
+    rng_key: jax.Array, accumulated_clipped_grads: jax.typing.ArrayLike, noise_std: float, C: float
+):
+    """Add Gaussian noise to the clipped and accumulated per-example gradients of a logical batch.
+
+    Parameters
+    ----------
+    rng_key : jax.Array
+        The PRNG key array for generating the Gaussian noise.
+    accumulated_clipped_grads : jax.typing.ArrayLike
+        The clipped and accumulated per-example gradients of a logical batch.
+    noise_std : float
+        The standard deviation to be added as computed with a privacy accountant.
+    C : float
+        The clipping norm of DP-SGD.
+
+    Returns
+    -------
+    noisy_grad : jax.typing.ArrayLike
+        The noisy gradient of the logical batch.
+    """
     num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
     treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
     new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
