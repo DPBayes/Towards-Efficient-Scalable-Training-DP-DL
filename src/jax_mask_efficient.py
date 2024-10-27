@@ -20,7 +20,7 @@ def add_trees(x, y):
 
 @jax.jit
 def compute_physical_batch_per_example_gradients(
-    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
 ):
     """Computes the per-example gradients for a physical batch.
 
@@ -32,6 +32,8 @@ def compute_physical_batch_per_example_gradients(
         The features of the physical batch.
     batch_y : jax.typing.ArrayLike
         The labels of the physical batch.
+    num_classes : int
+        The number of classes for one-hot encoding.
 
     Returns
     -------
@@ -45,7 +47,7 @@ def compute_physical_batch_per_example_gradients(
         resized_X = resizer(X)
         print(resized_X.shape, flush=True)
         logits = state.apply_fn(resized_X, params=params)[0]
-        one_hot = jax.nn.one_hot(y, 100)
+        one_hot = jax.nn.one_hot(y, num_classes=num_classes)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
         assert len(loss) == 1
         return loss.sum()
@@ -129,6 +131,7 @@ def add_Gaussian_noise(
     updates = add_trees(accumulated_clipped_grads, noise)
     return updates
 
+
 @jax.jit
 def update_model(state: train_state.TrainState, grads):
     return state.apply_gradients(grads=grads)
@@ -143,6 +146,7 @@ def compute_gradients_non_dp(
     batch_X: jax.typing.ArrayLike,
     batch_y: jax.typing.ArrayLike,
     mask: jax.typing.ArrayLike,
+    num_classes: int,
 ):
     #     """Computes gradients, loss and accuracy for a single batch."""
 
@@ -151,7 +155,7 @@ def compute_gradients_non_dp(
     def loss_fn(params, X, y):
         resized_X = resizer(X)
         logits = state.apply_fn(resized_X, params=params)[0]
-        one_hot = jax.nn.one_hot(y, 100)
+        one_hot = jax.nn.one_hot(y, num_classes=num_classes)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
         masked_loss = loss * mask
         return masked_loss.sum()
