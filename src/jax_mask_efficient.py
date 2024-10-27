@@ -168,16 +168,14 @@ def compute_gradients_non_dp(
 ## Evaluation
 
 
-def eval_fn(
-    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
+def compute_accuracy_for_batch(
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike
 ):
-    """Computes gradients, loss and accuracy for a single batch."""
+    """Computes accuracy for a single batch."""
 
     resizer = lambda x: normalize_and_reshape(x)
     resized_X = resizer(batch_X)
     logits = state.apply_fn(resized_X, state.params)[0]
-    one_hot = jax.nn.one_hot(batch_y, num_classes=num_classes)
-    loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
     predicted_class = jnp.argmax(logits, axis=-1)
 
     acc = jnp.mean(predicted_class == batch_y)
@@ -186,7 +184,7 @@ def eval_fn(
 
 
 def model_evaluation(
-    state: train_state.TrainState, test_data: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike, num_classes: int
+    state: train_state.TrainState, test_data: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike
 ):
 
     accs = []
@@ -194,6 +192,7 @@ def model_evaluation(
     for pb, yb in zip(test_data, test_labels):
         pb = jax.device_put(pb, jax.devices("gpu")[0])
         yb = jax.device_put(yb, jax.devices("gpu")[0])
-        accs.append(eval_fn(state, pb, yb, num_classes=num_classes))
+        # TODO: This won't be correct when len(pb) not the same for all pb in test_data. 
+        accs.append(compute_accuracy_for_batch(state, pb, yb))
 
     return np.mean(np.array(accs))
