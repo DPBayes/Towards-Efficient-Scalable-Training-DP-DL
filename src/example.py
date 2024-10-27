@@ -21,6 +21,7 @@ from jax_mask_efficient import (
     clip_and_accumulate_physical_batch,
     model_evaluation,
     add_Gaussian_noise,
+    poisson_sample_logical_batch_size,
     update_model,
 )
 
@@ -133,10 +134,7 @@ def main(args):
 
         #######
         # poisson subsample
-        actual_batch_size = jax.device_put(
-            jax.random.bernoulli(binomial_rng, shape=(dataset_size,), p=q).sum(),
-            jax.devices("cpu")[0],
-        )
+        actual_batch_size = poisson_sample_logical_batch_size(binomial_rng=binomial_rng, dataset_size=dataset_size, q=q)
         n_physical_batches = actual_batch_size // physical_bs + 1
         logical_batch_size = n_physical_batches * physical_bs
         n_masked_elements = logical_batch_size - actual_batch_size

@@ -18,6 +18,30 @@ def add_trees(x, y):
 ## Main functions for DP-SGD
 
 
+def poisson_sample_logical_batch_size(binomial_rng: jax.Array, dataset_size: int, q: float):
+    """Sample logical batch size using Poisson subsampling with sampling probability q.
+
+    Parameters
+    ----------
+    binomial_rng : jax.Array
+        The PRNG key array for the sampling.
+    dataset_size : int
+        The size of the total training dataset.
+    q : float
+        The sampling probability q, must be 0 < q < 1.
+
+    Returns
+    -------
+    logical_batch_size : int
+        The sampled logical batch size.
+    """
+    logical_batch_size = jax.device_put(
+        jax.random.bernoulli(binomial_rng, shape=(dataset_size,), p=q).sum(),
+        jax.devices("cpu")[0],
+    )
+    return logical_batch_size
+
+
 @jax.jit
 def compute_physical_batch_per_example_gradients(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
@@ -212,7 +236,7 @@ def model_evaluation(
     for pb, yb in zip(test_data, test_labels):
         pb = jax.device_put(pb, jax.devices("gpu")[0])
         yb = jax.device_put(yb, jax.devices("gpu")[0])
-        # TODO: This won't be correct when len(pb) not the same for all pb in test_data. 
+        # TODO: This won't be correct when len(pb) not the same for all pb in test_data.
         accs.append(compute_accuracy_for_batch(state, pb, yb))
 
     return np.mean(np.array(accs))
