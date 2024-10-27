@@ -147,7 +147,27 @@ def compute_gradients_non_dp(
     mask: jax.typing.ArrayLike,
     num_classes: int,
 ):
-    #     """Computes gradients, loss and accuracy for a single batch."""
+    """Computes the non-DP gradients for a physical batch.
+
+    Parameters
+    ----------
+    state : train_state.TrainState
+        The model train state.
+    batch_X : jax.typing.ArrayLike
+        The features of the physical batch.
+    batch_y : jax.typing.ArrayLike
+        The labels of the physical batch.
+    mask : jax.typing.ArrayLike
+        A mask to filter out gradients that are discarded as a small number of gradients
+        is only computed to keep the physical batch size fixed.
+    num_classes : int
+        The number of classes for one-hot encoding.
+
+    Returns
+    -------
+    acc_grads: jax.typing.ArrayLike
+        The accumulated per-example gradients after discarding the additional gradients (see mask).
+    """
 
     resizer = lambda x: normalize_and_reshape(x)
 
