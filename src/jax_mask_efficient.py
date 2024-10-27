@@ -4,6 +4,7 @@ import numpy as np
 
 from flax.training import train_state
 
+from collections import namedtuple
 
 from models import load_model
 from data import normalize_and_reshape
@@ -21,7 +22,9 @@ def add_trees(x, y):
 
 
 @jax.jit
-def compute_per_example_gradients(state: train_state.TrainState, batch_X, batch_y):
+def compute_per_example_gradients(
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike
+):
     """Computes gradients, loss and accuracy for a single batch."""
 
     resizer = lambda x: normalize_and_reshape(x)
@@ -42,9 +45,9 @@ def compute_per_example_gradients(state: train_state.TrainState, batch_X, batch_
 
 
 @jax.jit
-def process_a_physical_batch(px_grads, mask: jnp.array, C: float):
+def process_a_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, C: float):
 
-    def clip_mask_and_sum(x, mask, clipping_multiplier):
+    def _clip_mask_and_sum(x: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, clipping_multiplier: float):
 
         new_shape = (-1,) + (1,) * (x.ndim - 1)
         mask = mask.reshape(new_shape)
@@ -59,11 +62,11 @@ def process_a_physical_batch(px_grads, mask: jnp.array, C: float):
 
     clipping_multiplier = jnp.minimum(1.0, C / px_grad_norms)
 
-    return jax.tree.map(lambda x: clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
+    return jax.tree.map(lambda x: _clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
 
 
 @jax.jit
-def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
+def noise_addition(rng_key: jax.Array, accumulated_clipped_grads: jax.typing.ArrayLike, noise_std: float, C: float):
     num_vars = len(jax.tree_util.tree_leaves(accumulated_clipped_grads))
     treedef = jax.tree_util.tree_structure(accumulated_clipped_grads)
     new_key, *all_keys = jax.random.split(rng_key, num=num_vars + 1)
@@ -81,7 +84,7 @@ def noise_addition(rng_key, accumulated_clipped_grads, noise_std, C):
 ### Parameters for training
 
 
-def create_train_state(model_name: str, num_classes: int, image_dimension : int, config):
+def create_train_state(model_name: str, num_classes: int, image_dimension: int, config: namedtuple):
     """Creates initial `TrainState`."""
     rng, model, params = load_model(jax.random.PRNGKey(0), model_name, image_dimension, num_classes)
 
@@ -91,7 +94,7 @@ def create_train_state(model_name: str, num_classes: int, image_dimension : int,
 
 
 @jax.jit
-def update_model(state, grads):
+def update_model(state: train_state.TrainState, grads):
     return state.apply_gradients(grads=grads)
 
 
@@ -99,7 +102,12 @@ def update_model(state, grads):
 
 
 @jax.jit
-def compute_gradients_non_dp(state, batch_X, batch_y, mask):
+def compute_gradients_non_dp(
+    state: train_state.TrainState,
+    batch_X: jax.typing.ArrayLike,
+    batch_y: jax.typing.ArrayLike,
+    mask: jax.typing.ArrayLike,
+):
     #     """Computes gradients, loss and accuracy for a single batch."""
 
     resizer = lambda x: normalize_and_reshape(x)
@@ -121,13 +129,15 @@ def compute_gradients_non_dp(state, batch_X, batch_y, mask):
 ## Evaluation
 
 
-def eval_fn(state, batch_X, batch_y):
+def eval_fn(
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
+):
     """Computes gradients, loss and accuracy for a single batch."""
 
     resizer = lambda x: normalize_and_reshape(x)
     resized_X = resizer(batch_X)
     logits = state.apply_fn(resized_X, state.params)[0]
-    one_hot = jax.nn.one_hot(batch_y, 100)
+    one_hot = jax.nn.one_hot(batch_y, num_classes=num_classes)
     loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
     predicted_class = jnp.argmax(logits, axis=-1)
 
@@ -136,13 +146,15 @@ def eval_fn(state, batch_X, batch_y):
     return acc
 
 
-def model_evaluation(state, test_data, test_labels):
+def model_evaluation(
+    state: train_state.TrainState, test_data: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike, num_classes: int
+):
 
     accs = []
 
     for pb, yb in zip(test_data, test_labels):
         pb = jax.device_put(pb, jax.devices("gpu")[0])
         yb = jax.device_put(yb, jax.devices("gpu")[0])
-        accs.append(eval_fn(state, pb, yb))
+        accs.append(eval_fn(state, pb, yb, num_classes=num_classes))
 
     return np.mean(np.array(accs))
