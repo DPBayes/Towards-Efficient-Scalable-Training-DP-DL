@@ -220,7 +220,7 @@ def main(args):
 
         print(actual_batch_size / duration, flush=True)
 
-        acc_iter = model_evaluation(state, test_images, test_images,test_bs_size)
+        acc_iter = model_evaluation(state, test_images, test_labels,test_bs_size)
         print("iteration", t, "acc", acc_iter, flush=True)
 
         # Compute privacy guarantees
@@ -233,7 +233,7 @@ def main(args):
         privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
         print(privacy_results, flush=True)
 
-    acc_last = model_evaluation(state, test_images, test_images,test_bs_size)
+    acc_last = model_evaluation(state, test_images, test_labels,test_bs_size)
 
     print("times \n", times, flush=True)
 
