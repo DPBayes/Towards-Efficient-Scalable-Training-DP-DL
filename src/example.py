@@ -10,7 +10,7 @@ import os
 import math
 import time
 
-from data import import_data_efficient_mask
+from data import load_from_huggingface
 from models import create_train_state
 
 from dp_accounting_utils import compute_epsilon, calculate_noise
@@ -69,7 +69,7 @@ def main(args):
 
     print(args, flush=True)
 
-    train_images, train_labels, test_images, test_labels = import_data_efficient_mask()
+    train_images, train_labels, test_images, test_labels = load_from_huggingface("cifar100")
 
     (
         num_steps,
