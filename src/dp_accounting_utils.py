@@ -24,12 +24,11 @@ def calculate_noise(
     )
 
     if accountant == "pld":
-        accountant = pld.PLDAccountant(orders)
+        accountant = pld.PLDAccountant
     elif accountant == "rdp":
-        orders = list(jnp.linspace(1.1, 10.9, 99)) + list(range(11, 64))
         accountant = rdp.RdpAccountant
     else:
-        raise ValueError("accountant parameter needs to be either 'prv' or 'rdp'")
+        raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'")
 
     noise_multiplier = mechanism_calibration.calibrate_dp_mechanism(
         accountant,
@@ -46,16 +45,12 @@ def compute_epsilon(
     target_delta: float = 1e-5,
     noise_multiplier: float = 0.1,
 ):
-    """Compute epsilon for DPSGD privacy accounting"""
-    if num_examples * target_delta > 1.0:
-        warnings.warn("Your delta might be too high.")
 
     print("steps", steps, flush=True)
 
     print("noise multiplier", noise_multiplier, flush=True)
 
-    orders = list(jnp.linspace(1.1, 10.9, 99)) + list(range(11, 64))
-    accountant = rdp.RdpAccountant(orders)  # type: ignore
+    accountant = rdp.RdpAccountant()  # type: ignore
     accountant.compose(
         PoissonSampledDpEvent(sample_rate, GaussianDpEvent(noise_multiplier)),
         steps,
