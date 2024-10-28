@@ -1,14 +1,14 @@
+import argparse
+import os
+import math
+import time
+import warnings
 import jax
+
 import jax.numpy as jnp
 import numpy as np
 
 from collections import namedtuple
-import argparse
-
-import os
-
-import math
-import time
 
 from data import import_data_efficient_mask
 from models import create_train_state
@@ -34,6 +34,9 @@ os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
 def _parse_arguments(args, dataset_size):
     num_steps = args.epochs * math.ceil(dataset_size / args.bs)
+
+    if dataset_size * target_delta > 1.0:
+        warnings.warn("Your delta might be too high.")
 
     q = 1 / math.ceil(dataset_size / args.bs)
 
