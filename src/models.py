@@ -1,6 +1,19 @@
 import jax
+import optax
 import flax.linen as nn
 from transformers import FlaxViTForImageClassification
+from collections import namedtuple
+from flax.training import train_state
+from models import load_model
+
+
+def create_train_state(model_name: str, num_classes: int, image_dimension: int, optimizer_config: namedtuple):
+    """Creates initial `TrainState`."""
+    rng, model, params = load_model(jax.random.PRNGKey(0), model_name, image_dimension, num_classes)
+
+    # set the optimizer
+    tx = optax.adam(optimizer_config.learning_rate)
+    return train_state.TrainState.create(apply_fn=jax.jit(model.__call__), params=params, tx=tx)
 
 
 def load_model(rng, model_name, dimension, num_classes):

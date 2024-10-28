@@ -2,6 +2,11 @@ import numpy as np
 import jax
 
 
+def normalize_and_reshape(imgs):
+    normalized = ((imgs / 255.0) - 0.5) / 0.5
+    return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
+
+
 def import_data_efficient_mask():
     train_images = np.load("numpy_cifar100/train_images.npy")
     train_labels = np.load("numpy_cifar100/train_labels.npy")
