@@ -69,7 +69,7 @@ def main(args):
 
     print(args, flush=True)
 
-    train_images, train_labels, test_images, test_labels = load_from_huggingface("cifar100")
+    train_images, train_labels, test_images, test_labels = load_from_huggingface("cifar100", cache_dir=None)
 
     (
         num_steps,
