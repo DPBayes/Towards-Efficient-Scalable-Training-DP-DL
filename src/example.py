@@ -1,14 +1,14 @@
+import argparse
+import os
+import math
+import time
+import warnings
 import jax
+
 import jax.numpy as jnp
 import numpy as np
 
 from collections import namedtuple
-import argparse
-
-import os
-
-import math
-import time
 
 from data import import_data_efficient_mask
 from models import create_train_state
@@ -35,9 +35,18 @@ os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 def _parse_arguments(args, dataset_size):
     num_steps = args.epochs * math.ceil(dataset_size / args.bs)
 
+    if dataset_size * args.target_delta > 1.0:
+        warnings.warn("Your delta might be too high.")
+
     q = 1 / math.ceil(dataset_size / args.bs)
 
-    noise_std = calculate_noise(q, args.epsilon, args.target_delta, args.epochs, args.accountant)
+    noise_std = calculate_noise(
+        sample_rate=q,
+        target_epsilon=args.epsilon,
+        target_delta=args.target_delta,
+        steps=num_steps,
+        accountant=args.accountant,
+    )
     C = args.grad_norm
 
     optimizer_config = namedtuple("Config", ["learning_rate"])
@@ -117,9 +126,15 @@ def main(args):
         mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
         # compute grads and clip
-        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb)
-        sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(per_example_gradients, mask, C)
-        accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
+        per_example_gradients = compute_per_example_gradients_physical_batch(
+            state, pb, yb
+        )
+        sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(
+            per_example_gradients, mask, C
+        )
+        accumulated_clipped_grads = add_trees(
+            accumulated_clipped_grads, sum_of_clipped_grads_from_pb
+        )
 
         return (
             state,
@@ -149,14 +164,23 @@ def main(args):
 
         # get random padded logical batches that are slighly larger actual batch size
         padded_logical_batch_X, padded_logical_batch_y = get_padded_logical_batch(
-            batch_rng=batch_rng, padded_logical_batch_size=len(masks), train_X=train_images, train_y=train_labels
+            batch_rng=batch_rng,
+            padded_logical_batch_size=len(masks),
+            train_X=train_images,
+            train_y=train_labels,
         )
 
-        padded_logical_batch_X = padded_logical_batch_X.reshape(-1, 1, 3, orig_image_dimension, orig_image_dimension)
+        padded_logical_batch_X = padded_logical_batch_X.reshape(
+            -1, 1, 3, orig_image_dimension, orig_image_dimension
+        )
 
         # cast to GPU
-        padded_logical_batch_X = jax.device_put(padded_logical_batch_X, jax.devices("gpu")[0])
-        padded_logical_batch_y = jax.device_put(padded_logical_batch_y, jax.devices("gpu")[0])
+        padded_logical_batch_X = jax.device_put(
+            padded_logical_batch_X, jax.devices("gpu")[0]
+        )
+        padded_logical_batch_y = jax.device_put(
+            padded_logical_batch_y, jax.devices("gpu")[0]
+        )
         masks = jax.device_put(masks, jax.devices("gpu")[0])
 
         print("##### Starting gradient accumulation #####", flush=True)
@@ -180,7 +204,9 @@ def main(args):
                 masks,
             ),
         )
-        noisy_grad = add_Gaussian_noise(noise_rng, accumulated_clipped_grads, noise_std, C)
+        noisy_grad = add_Gaussian_noise(
+            noise_rng, accumulated_clipped_grads, noise_std, C
+        )
 
         # update
         state = jax.block_until_ready(update_model(state, noisy_grad))
@@ -199,8 +225,7 @@ def main(args):
         # Compute privacy guarantees
         epsilon, delta = compute_epsilon(
             steps=t + 1,
-            batch_size=actual_batch_size,
-            num_examples=len(train_images),
+            sample_rate=q,
             target_delta=args.target_delta,
             noise_multiplier=noise_std,
         )
