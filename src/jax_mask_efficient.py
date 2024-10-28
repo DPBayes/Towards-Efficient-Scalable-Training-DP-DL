@@ -112,7 +112,7 @@ def setup_physical_batches(
 
 
 @jax.jit
-def compute_physical_batch_per_example_gradients(
+def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
 ):
     """Computes the per-example gradients for a physical batch.

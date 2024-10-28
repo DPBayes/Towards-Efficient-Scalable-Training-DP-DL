@@ -16,7 +16,7 @@ from models import create_train_state
 from dp_accounting_utils import compute_epsilon, calculate_noise
 
 from jax_mask_efficient import (
-    compute_physical_batch_per_example_gradients,
+    compute_per_example_gradients_physical_batch,
     add_trees,
     clip_and_accumulate_physical_batch,
     get_padded_logical_batch,
@@ -117,7 +117,7 @@ def main(args):
         mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
         # compute grads and clip
-        per_example_gradients = compute_physical_batch_per_example_gradients(state, pb, yb)
+        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb)
         sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(per_example_gradients, mask, C)
         accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
