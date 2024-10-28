@@ -130,8 +130,8 @@ def main(args):
         )
 
     for t in range(num_steps):
-        # TODO: Is this deprecated? See https://jax.readthedocs.io/en/latest/_autosummary/jax.random.PRNGKey.html.
-        sampling_rng = jax.random.PRNGKey(t + 1)
+        
+        sampling_rng = jax.random.key(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
 
         #######
