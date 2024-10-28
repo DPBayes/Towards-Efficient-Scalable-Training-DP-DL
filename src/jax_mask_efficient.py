@@ -291,21 +291,23 @@ def compute_accuracy_for_batch(
     logits = state.apply_fn(resized_X, state.params)[0]
     predicted_class = jnp.argmax(logits, axis=-1)
 
-    acc = jnp.mean(predicted_class == batch_y)
+    correct = jnp.sum(predicted_class == batch_y)
 
-    return acc
+    return correct
 
 
 def model_evaluation(
     state: train_state.TrainState, test_data: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike
 ):
 
-    accs = []
+    corr = 0 
+    total = 0
 
     for pb, yb in zip(test_data, test_labels):
         pb = jax.device_put(pb, jax.devices("gpu")[0])
         yb = jax.device_put(yb, jax.devices("gpu")[0])
         # TODO: This won't be correct when len(pb) not the same for all pb in test_data.
-        accs.append(compute_accuracy_for_batch(state, pb, yb))
+        corr += compute_accuracy_for_batch(state, pb, yb)
+        total += len(yb)
 
-    return np.mean(np.array(accs))
+    return corr / total
