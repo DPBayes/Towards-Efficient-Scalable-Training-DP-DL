@@ -42,17 +42,17 @@ def poisson_sample_logical_batch_size(binomial_rng: jax.Array, dataset_size: int
     return logical_batch_size
 
 
-def get_technical_logical_batch(
-    batch_rng: jax.Array, tech_logical_batch_size: int, train_X: jax.typing.ArrayLike, train_y: jax.typing.ArrayLike
+def get_padded_logical_batch(
+    batch_rng: jax.Array, padded_logical_batch_size: int, train_X: jax.typing.ArrayLike, train_y: jax.typing.ArrayLike
 ):
-    """Samples random technical logical batch from the data that is slightly larger than the actual logical bs
+    """Samples random padded logical batch from the data that is slightly larger than the actual logical bs
         but can be divided into n physical batches.
 
     Parameters
     ----------
     batch_rng : jax.Array
         The PRNG key array for sampling the batch.
-    tech_logical_batch_size : int
+    padded_logical_batch_size : int
         The size of the sampled batch (so that it can be divided into n physical batches).
     train_X : jax.typing.ArrayLike
         The training features.
@@ -61,19 +61,19 @@ def get_technical_logical_batch(
 
     Returns
     -------
-    tech_logical_batch_X : jax.typing.ArrayLike
-        The technical training features.
-    tech_logical_batch_y : jax.typing.ArrayLike
-        The technical logical batch training labels.
+    padded_logical_batch_X : jax.typing.ArrayLike
+        The padded training features.
+    padded_logical_batch_y : jax.typing.ArrayLike
+        The padded logical batch training labels.
     """
 
     # take the logical batch
     dataset_size = len(train_y)
-    indices = jax.random.permutation(batch_rng, dataset_size)[:tech_logical_batch_size]
-    tech_logical_batch_X = train_X[indices]
-    tech_logical_batch_y = train_y[indices]
+    indices = jax.random.permutation(batch_rng, dataset_size)[:padded_logical_batch_size]
+    padded_logical_batch_X = train_X[indices]
+    padded_logical_batch_y = train_y[indices]
 
-    return tech_logical_batch_X, tech_logical_batch_y
+    return padded_logical_batch_X, padded_logical_batch_y
 
 
 def setup_physical_batches(
@@ -99,10 +99,10 @@ def setup_physical_batches(
     """
     # ensure full physical batches of size `physical_bs` each
     n_physical_batches = actual_logical_batch_size // physical_bs + 1
-    tech_logical_batch_size = n_physical_batches * physical_bs
+    padded_logical_batch_size = n_physical_batches * physical_bs
 
     # masks (throw away n_masked_elements later as they are only required for computing)
-    n_masked_elements = tech_logical_batch_size - actual_logical_batch_size
+    n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
     masks = jax.device_put(
         jnp.concatenate([jnp.ones(actual_logical_batch_size), jnp.zeros(n_masked_elements)]),
         jax.devices("cpu")[0],
