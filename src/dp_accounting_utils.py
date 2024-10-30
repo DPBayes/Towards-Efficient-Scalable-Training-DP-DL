@@ -1,14 +1,9 @@
-import warnings
-import jax.numpy as jnp
-
 from dp_accounting import rdp, pld, mechanism_calibration
 from dp_accounting.dp_event import (
     PoissonSampledDpEvent,
     GaussianDpEvent,
     SelfComposedDpEvent,
 )
-from dp_accounting.pld.accountant import get_smallest_subsampled_gaussian_noise
-from dp_accounting.pld.common import DifferentialPrivacyParameters
 
 
 def calculate_noise(
@@ -79,7 +74,7 @@ def calculate_noise(
 
 def compute_epsilon(
     steps: int,
-    sample_rate: int,
+    sample_rate: float,
     target_delta: float = 1e-5,
     noise_multiplier: float = 0.1,
 ):
