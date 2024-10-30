@@ -6,6 +6,17 @@ from dp_accounting.dp_event import (
 )
 
 
+def _check_params(sample_rate: float, target_delta: float, steps: int):
+    if sample_rate < 0 or sample_rate > 1:
+        raise ValueError("sample_rate parameter needs to be 0 <= and <= 1.")
+
+    if target_delta < 0 or target_delta > 1:
+        raise ValueError("target_delta parameter needs to be 0 <= and <= 1.")
+
+    if steps < 1 and type(steps) == int:
+        raise ValueError("steps parameter must be >= 1.")
+
+
 def calculate_noise(
     sample_rate: float,
     target_epsilon: float,
@@ -16,7 +27,7 @@ def calculate_noise(
     """
     Computes the required Gaussian noise standard deviation for DP-SGD
     given the relevant hyperparameters of DP-SGD. Note that my default
-    the PLD accountant is used. 
+    the PLD accountant is used.
 
     Parameters
     ----------
@@ -42,18 +53,13 @@ def calculate_noise(
         Raise if parameters are misspecified, e.g. negative target_epsilon.
     """
 
-    if sample_rate < 0 or sample_rate > 1:
-        raise ValueError("sample_rate parameter needs to be 0 <= and <= 1.")
+    # check those params that are common to many dp accounting methods
+    _check_params(sample_rate=sample_rate, target_delta=target_delta, steps=steps)
 
     if target_epsilon < 0:
         raise ValueError("target_epsilon parameter needs to be positive.")
 
-    if target_delta < 0 or target_delta > 1:
-        raise ValueError("target_delta parameter needs to be 0 <= and <= 1.")
-
-    if steps < 1:
-        raise ValueError("steps parameter must be >= 1.")
-
+    # check and setup accountant
     if accountant == "pld":
         accountant = pld.PLDAccountant
     elif accountant == "rdp":
@@ -79,18 +85,24 @@ def compute_epsilon(
     noise_multiplier: float = 0.1,
     accountant: str = "pld",
 ):
+    # check those params that are common to many dp accounting methods
+    _check_params(sample_rate=sample_rate, target_delta=target_delta, steps=steps)
 
-    print("steps", steps, flush=True)
+    if noise_multiplier < 0:
+        raise ValueError("noise parameter needs to be positive.")
 
-    print("noise multiplier", noise_multiplier, flush=True)
-
+    # check and setup accountant
     if accountant == "pld":
         accountant = pld.PLDAccountant
     elif accountant == "rdp":
         accountant = rdp.RdpAccountant
     else:
         raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'.")
-        
+
+    print("steps", steps, flush=True)
+
+    print("noise multiplier", noise_multiplier, flush=True)
+
     accountant.compose(
         PoissonSampledDpEvent(sample_rate, GaussianDpEvent(noise_multiplier)),
         steps,
