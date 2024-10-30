@@ -6,7 +6,10 @@ from dp_accounting.dp_event import (
 )
 
 
-def _check_params(sample_rate: float, target_delta: float, steps: int):
+def _check_params(sample_rate: float, steps: int, target_delta: float):
+    """
+    Raise ValueError if parameters are misspecified, e.g. negative steps.
+    """
     if sample_rate < 0 or sample_rate > 1:
         raise ValueError("sample_rate parameter needs to be 0 <= and <= 1.")
 
@@ -54,7 +57,7 @@ def calculate_noise(
     """
 
     # check those params that are common to many dp accounting methods
-    _check_params(sample_rate=sample_rate, target_delta=target_delta, steps=steps)
+    _check_params(sample_rate=sample_rate, steps=steps, target_delta=target_delta)
 
     if target_epsilon < 0:
         raise ValueError("target_epsilon parameter needs to be positive.")
@@ -114,9 +117,9 @@ def compute_epsilon(
     ValueError
         Raise if parameters are misspecified, e.g. negative steps.
     """
-    
+
     # check those params that are common to many dp accounting methods
-    _check_params(sample_rate=sample_rate, target_delta=target_delta, steps=steps)
+    _check_params(sample_rate=sample_rate, steps=steps, target_delta=target_delta)
 
     if noise_multiplier < 0:
         raise ValueError("noise parameter needs to be positive.")
