@@ -85,6 +85,36 @@ def compute_epsilon(
     target_delta: float = 1e-5,
     accountant: str = "pld",
 ):
+    """
+    Computes spent privacy budget in terms of (epsilon, delta)-DP given the specified
+    DP-SGD hyperparameters using the specified accountant which is by default PLD.
+
+    Parameters
+    ----------
+    noise_multiplier : float
+        The added Gaussian noise standard deviation.
+    sample_rate : float
+        The sampling rate for Poisson subsampling. Note that 0 <= sampling_rate <= 1.
+    steps : int
+        The number of steps that should be accounted for in total during training.
+    target_delta : float, optional
+        The target delta at which to compute epsilon, by default 1e-5.
+    accountant : str, optional
+        The privacy accountant, can be "pld" or "rdp, by default "pld".
+
+    Returns
+    -------
+    epsilon : float
+        The epsilon parameter of the spent (epsilon, delta)-DP privacy budget.
+    delta : float
+        The delta parameter of the spent (epsilon, delta)-DP privacy budget.
+
+    Raises
+    ------
+    ValueError
+        Raise if parameters are misspecified, e.g. negative steps.
+    """
+    
     # check those params that are common to many dp accounting methods
     _check_params(sample_rate=sample_rate, target_delta=target_delta, steps=steps)
 
