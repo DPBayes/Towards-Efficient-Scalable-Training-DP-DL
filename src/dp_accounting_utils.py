@@ -59,7 +59,7 @@ def calculate_noise(
     if target_epsilon < 0:
         raise ValueError("target_epsilon parameter needs to be positive.")
 
-    # check and setup accountant
+    # check and select accountant class
     if accountant == "pld":
         accountant = pld.PLDAccountant
     elif accountant == "rdp":
@@ -93,9 +93,9 @@ def compute_epsilon(
 
     # check and setup accountant
     if accountant == "pld":
-        accountant = pld.PLDAccountant
+        accountant = pld.PLDAccountant()
     elif accountant == "rdp":
-        accountant = rdp.RdpAccountant
+        accountant = rdp.RdpAccountant()
     else:
         raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'.")
 
