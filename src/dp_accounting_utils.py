@@ -77,13 +77,20 @@ def compute_epsilon(
     sample_rate: float,
     target_delta: float = 1e-5,
     noise_multiplier: float = 0.1,
+    accountant: str = "pld",
 ):
 
     print("steps", steps, flush=True)
 
     print("noise multiplier", noise_multiplier, flush=True)
 
-    accountant = rdp.RdpAccountant()  # type: ignore
+    if accountant == "pld":
+        accountant = pld.PLDAccountant
+    elif accountant == "rdp":
+        accountant = rdp.RdpAccountant
+    else:
+        raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'.")
+        
     accountant.compose(
         PoissonSampledDpEvent(sample_rate, GaussianDpEvent(noise_multiplier)),
         steps,
