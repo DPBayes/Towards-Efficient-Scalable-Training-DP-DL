@@ -126,15 +126,9 @@ def main(args):
         mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
 
         # compute grads and clip
-        per_example_gradients = compute_per_example_gradients_physical_batch(
-            state, pb, yb
-        )
-        sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(
-            per_example_gradients, mask, C
-        )
-        accumulated_clipped_grads = add_trees(
-            accumulated_clipped_grads, sum_of_clipped_grads_from_pb
-        )
+        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb)
+        sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(per_example_gradients, mask, C)
+        accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
         return (
             state,
@@ -145,7 +139,7 @@ def main(args):
         )
 
     for t in range(num_steps):
-        
+
         sampling_rng = jax.random.key(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
 
@@ -170,17 +164,11 @@ def main(args):
             train_y=train_labels,
         )
 
-        padded_logical_batch_X = padded_logical_batch_X.reshape(
-            -1, 1, 3, orig_image_dimension, orig_image_dimension
-        )
+        padded_logical_batch_X = padded_logical_batch_X.reshape(-1, 1, 3, orig_image_dimension, orig_image_dimension)
 
         # cast to GPU
-        padded_logical_batch_X = jax.device_put(
-            padded_logical_batch_X, jax.devices("gpu")[0]
-        )
-        padded_logical_batch_y = jax.device_put(
-            padded_logical_batch_y, jax.devices("gpu")[0]
-        )
+        padded_logical_batch_X = jax.device_put(padded_logical_batch_X, jax.devices("gpu")[0])
+        padded_logical_batch_y = jax.device_put(padded_logical_batch_y, jax.devices("gpu")[0])
         masks = jax.device_put(masks, jax.devices("gpu")[0])
 
         print("##### Starting gradient accumulation #####", flush=True)
@@ -204,9 +192,7 @@ def main(args):
                 masks,
             ),
         )
-        noisy_grad = add_Gaussian_noise(
-            noise_rng, accumulated_clipped_grads, noise_std, C
-        )
+        noisy_grad = add_Gaussian_noise(noise_rng, accumulated_clipped_grads, noise_std, C)
 
         # update
         state = jax.block_until_ready(update_model(state, noisy_grad))
@@ -224,12 +210,13 @@ def main(args):
 
         # Compute privacy guarantees
         epsilon, delta = compute_epsilon(
-            steps=t + 1,
-            sample_rate=q,
-            target_delta=args.target_delta,
             noise_multiplier=noise_std,
+            sample_rate=q,
+            steps=t + 1,
+            target_delta=args.target_delta,
+            accountant=args.accountant,
         )
-        privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
+        privacy_results = {"accountant": args.accountant, "epsilon": epsilon, "delta": delta}
         print(privacy_results, flush=True)
 
     acc_last = model_evaluation(state, splits_test, splits_labels)
