@@ -19,9 +19,9 @@ def _check_params(sample_rate: float, target_delta: float, steps: int):
 
 def calculate_noise(
     sample_rate: float,
+    steps: int,
     target_epsilon: float,
     target_delta: float,
-    steps: int,
     accountant: str = "pld",
 ):
     """
@@ -33,12 +33,12 @@ def calculate_noise(
     ----------
     sample_rate : float
         The sampling rate for Poisson subsampling. Note that 0 <= sampling_rate <= 1.
+    steps : int
+        The number of steps that should be accounted for in total during training.
     target_epsilon : float
         The desired epsilon at `target_delta` that should be reached after taking all steps.
     target_delta : float
         The target delta of the DP-SGD run.
-    steps : int
-        The number of steps that should be taken in total.
     accountant : str, optional
         The privacy accountant, can be "pld" or "rdp, by default "pld".
 
@@ -79,10 +79,10 @@ def calculate_noise(
 
 
 def compute_epsilon(
-    steps: int,
+    noise_multiplier: float,
     sample_rate: float,
+    steps: int,
     target_delta: float = 1e-5,
-    noise_multiplier: float = 0.1,
     accountant: str = "pld",
 ):
     # check those params that are common to many dp accounting methods
