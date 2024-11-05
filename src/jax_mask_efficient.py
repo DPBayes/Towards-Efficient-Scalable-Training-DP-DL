@@ -6,6 +6,8 @@ from flax.training import train_state
 
 from data import normalize_and_reshape
 
+import warnings
+from functools import partial
 
 ## define some jax utility functions
 
@@ -111,7 +113,7 @@ def setup_physical_batches(
     return masks, n_physical_batches
 
 
-@jax.jit
+@partial(jax.jit,static_argnums=(3,))
 def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
 ):
@@ -291,21 +293,23 @@ def compute_accuracy_for_batch(
     logits = state.apply_fn(resized_X, state.params)[0]
     predicted_class = jnp.argmax(logits, axis=-1)
 
-    acc = jnp.mean(predicted_class == batch_y)
+    correct = jnp.sum(predicted_class == batch_y)
 
-    return acc
+    return correct
 
 
 def model_evaluation(
-    state: train_state.TrainState, test_data: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike
+    state: train_state.TrainState, test_images: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike, batch_size: int = 50
 ):
+    
+    corr = 0
+    total = 0
+    test_size = len(test_images)
 
-    accs = []
+    for i in range(0,test_size,batch_size):
+        pb = jax.device_put(test_images[i:i+batch_size], jax.devices("gpu")[0])
+        yb = jax.device_put(test_labels[i:i+batch_size], jax.devices("gpu")[0])
+        corr += compute_accuracy_for_batch(state, pb, yb)
+        total += len(yb)  
 
-    for pb, yb in zip(test_data, test_labels):
-        pb = jax.device_put(pb, jax.devices("gpu")[0])
-        yb = jax.device_put(yb, jax.devices("gpu")[0])
-        # TODO: This won't be correct when len(pb) not the same for all pb in test_data.
-        accs.append(compute_accuracy_for_batch(state, pb, yb))
-
-    return np.mean(np.array(accs))
+    return corr / total

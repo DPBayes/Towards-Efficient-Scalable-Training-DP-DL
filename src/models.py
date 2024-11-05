@@ -4,7 +4,6 @@ import flax.linen as nn
 from transformers import FlaxViTForImageClassification
 from collections import namedtuple
 from flax.training import train_state
-from models import load_model
 
 
 def create_train_state(model_name: str, num_classes: int, image_dimension: int, optimizer_config: namedtuple):
