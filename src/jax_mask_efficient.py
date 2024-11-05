@@ -299,24 +299,17 @@ def compute_accuracy_for_batch(
 
 
 def model_evaluation(
-    state: train_state.TrainState, test_images: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike, batch_size:int = 50
+    state: train_state.TrainState, test_images: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike, batch_size: int = 50
 ):
-    diff = len(test_images) % batch_size
-
-    if diff != 0:
-        batch_size = batch_size - diff
-        warnings.warn(f'The batch size does not divide the size of the test set, fixed the new batch size to {batch_size}')
-
-    num_splits = int(len(test_images)/batch_size)
-    splits_test = jnp.split(test_images, num_splits)
-    splits_test_labels = jnp.split(test_labels, num_splits)
-    corr = 0 
+    
+    corr = 0
     total = 0
+    test_size = len(test_images)
 
-    for pb, yb in zip(splits_test, splits_test_labels):
-        pb = jax.device_put(pb, jax.devices("gpu")[0])
-        yb = jax.device_put(yb, jax.devices("gpu")[0])
+    for i in range(0,test_size,batch_size):
+        pb = jax.device_put(test_images[i:i+batch_size], jax.devices("gpu")[0])
+        yb = jax.device_put(test_labels[i:i+batch_size], jax.devices("gpu")[0])
         corr += compute_accuracy_for_batch(state, pb, yb)
-        total += len(yb)
+        total += len(yb)  
 
     return corr / total
