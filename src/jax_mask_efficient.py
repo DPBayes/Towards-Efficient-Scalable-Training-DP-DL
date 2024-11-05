@@ -316,7 +316,6 @@ def model_evaluation(
     for pb, yb in zip(splits_test, splits_test_labels):
         pb = jax.device_put(pb, jax.devices("gpu")[0])
         yb = jax.device_put(yb, jax.devices("gpu")[0])
-        # TODO: This won't be correct when len(pb) not the same for all pb in test_data.
         corr += compute_accuracy_for_batch(state, pb, yb)
         total += len(yb)
 
