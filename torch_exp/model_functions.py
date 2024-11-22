@@ -80,6 +80,7 @@ def load_model(model_name, n_classes, lib):
         # model = ModuleValidator.fix(model)
         pos_total, pos_train = count_params(model)
         print("post total parameters {} post trained parameters {}".format(pos_total, pos_train))
+        model = models.DpFslLinear(model_name, model, n_classes)
     elif "BiT-M-R" in model_name:
         std = False
         if lib == "non" or lib == "opacus":
@@ -100,7 +101,6 @@ def load_model(model_name, n_classes, lib):
 
         pos_total, pos_train = count_params(model)
         print("post total parameters {} post trained parameters {}".format(pos_total, pos_train))
-
-    model = models.DpFslLinear(model_name, model, n_classes)
-
+        model = models.DpFslConv(model_name,model,n_classes)
+    
     return model
