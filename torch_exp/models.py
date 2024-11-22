@@ -296,6 +296,27 @@ class DpFslLinear(nn.Module):
   def forward(self, x):
     return self.feature_extractor(x)
 
+class DpFslConv(nn.Module):
+  def __init__(self, feature_extractor_name,feature_extractor, num_classes):
+    super(DpFslConv, self).__init__()
+
+    print('Initialize DpFslConv',feature_extractor_name)
+
+    self.feature_extractor = feature_extractor
+
+    num_features = self.feature_extractor.head.in_features
+    #self.feature_extractor.head = nn.Identity()
+    # send a test signal through the feature extractor to get its feature dimension
+    #feature_extractor_dim = self.feature_extractor(torch.Tensor(1, 3, 224, 224)).size(1)
+    self.feature_extractor.head.fc = nn.Conv2d(num_features, 100,kernel_size=(1,1),stride=(1,1))
+
+    # self.feature_extractor.head = nn.Linear(num_features, num_classes)
+    self.feature_extractor.head.fc.weight.data.fill_(0.0)
+    self.feature_extractor.head.fc.bias.data.fill_(0.0)
+
+  def forward(self, x):
+    return self.feature_extractor(x)
+
 
 KNOWN_MODELS = OrderedDict([
     ('BiT-M-R50x1', lambda *a, **kw: ResNetV2([3, 4, 6, 3], 1, *a, **kw)),
