@@ -24,6 +24,7 @@ from jax_mask_efficient import (
     add_Gaussian_noise,
     poisson_sample_logical_batch_size,
     setup_physical_batches,
+    setup_physical_batches_distributed,
     update_model,
 )
 
@@ -106,6 +107,8 @@ def main(args):
     splits_test = jnp.split(test_images, 10)
     splits_labels = jnp.split(test_labels, 10)
 
+    n_workers = jax.device_count()
+
     @jax.jit
     def body_fun(t, args):
         (
@@ -143,94 +146,228 @@ def main(args):
             logical_batch_y,
             masks,
         )
+    
+    distributed = True if n_workers > 0 else False
 
-    for t in range(num_steps):
-        
-        sampling_rng = jax.random.key(t + 1)
-        batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
+    if distributed:
 
-        #######
-        # poisson subsample
-        actual_batch_size = poisson_sample_logical_batch_size(
-            binomial_rng=binomial_rng, dataset_size=dataset_size, q=q
-        )
+        for t in range(num_steps):
+            
+            sampling_rng = jax.random.key(t + 1)
+            batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
 
-        # determine padded_logical_bs so that there are full physical batches
-        # and create appropriate masks to mask out unnessary elements later
-        masks, n_physical_batches = setup_physical_batches(
-            actual_batch_size=actual_batch_size,
-            physical_bs=physical_bs,
-        )
+            #######
+            # poisson subsample
+            actual_batch_size = poisson_sample_logical_batch_size(
+                binomial_rng=binomial_rng, dataset_size=dataset_size, q=q
+            )
 
-        # get random padded logical batches that are slighly larger actual batch size
-        padded_logical_batch_X, padded_logical_batch_y = get_padded_logical_batch(
-            batch_rng=batch_rng,
-            padded_logical_batch_size=len(masks),
-            train_X=train_images,
-            train_y=train_labels,
-        )
+            # determine padded_logical_bs so that there are full physical batches
+            # and create appropriate masks to mask out unnessary elements later
+            # since the distributed case needs to divide the logical batch in the number
+            # of devices, we need to pad even more
+            masks, n_physical_batches, worker_size = setup_physical_batches_distributed(
+                actual_batch_size=actual_batch_size,
+                physical_bs=physical_bs,
+                world_size=n_workers
+            )
 
-        padded_logical_batch_X = padded_logical_batch_X.reshape(
-            -1, 1, 3, orig_image_dimension, orig_image_dimension
-        )
+            # get random padded logical batches that are slighly larger actual batch size
+            padded_logical_batch_X, padded_logical_batch_y = get_padded_logical_batch(
+                batch_rng=batch_rng,
+                padded_logical_batch_size=len(masks),
+                train_X=train_images,
+                train_y=train_labels,
+            )
 
-        # cast to GPU
-        padded_logical_batch_X = jax.device_put(
-            padded_logical_batch_X, jax.devices("gpu")[0]
-        )
-        padded_logical_batch_y = jax.device_put(
-            padded_logical_batch_y, jax.devices("gpu")[0]
-        )
-        masks = jax.device_put(masks, jax.devices("gpu")[0])
+            padded_logical_batch_X = padded_logical_batch_X.reshape(
+                -1, 1, 3, orig_image_dimension, orig_image_dimension
+            )
 
-        print("##### Starting gradient accumulation #####", flush=True)
-        ### gradient accumulation
-        params = state.params
+            padded_logical_batch_X = padded_logical_batch_X.reshape(
+                n_workers,worker_size, *padded_logical_batch_X.shape[1:]
+            )
 
-        accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
+            padded_logical_batch_y = padded_logical_batch_y.reshape(
+                n_workers,worker_size, *padded_logical_batch_y.shape[1:]
+            )
 
-        start = time.time()
+            masks = masks.reshape(
+                n_workers,worker_size, *masks.shape[1:]
+            )
 
-        # Main loop
-        _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
-            0,
-            n_physical_batches,
-            body_fun,
-            (
-                state,
-                accumulated_clipped_grads0,
-                padded_logical_batch_X,
-                padded_logical_batch_y,
-                masks,
-            ),
-        )
-        noisy_grad = add_Gaussian_noise(
-            noise_rng, accumulated_clipped_grads, noise_std, C
-        )
+            # cast to GPU
+            # Sharding must be different, the put must be to each device
 
-        # update
-        state = jax.block_until_ready(update_model(state, noisy_grad))
+            padded_logical_batch_X = jax.device_put(
+                [x for x in padded_logical_batch_X], jax.devices()
+            )
+            padded_logical_batch_y = jax.device_put(
+                [x for x in padded_logical_batch_y], jax.devices()
+            )
+            masks = jax.device_put(
+                [x for x in masks], jax.devices()
+            )
 
-        end = time.time()
-        duration = end - start
+            print("##### Starting gradient accumulation #####", flush=True)
+            ### gradient accumulation
+            params = state.params
 
-        times.append(duration)
-        logical_batch_sizes.append(actual_batch_size)
+            accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
 
-        print(actual_batch_size / duration, flush=True)
+            start = time.time()
 
-        acc_iter = model_evaluation(state, splits_test, splits_labels)
-        print("iteration", t, "acc", acc_iter, flush=True)
+            # Main loop
+            
+            def get_acc_grads_logical_batch(
+                    n_physical_batches,
+                    state,
+                    accumulated_clipped_grads0,
+                    padded_logical_batch_X,
+                    padded_logical_batch_y,
+                    masks):
+                _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
+                    0,
+                    n_physical_batches,
+                    body_fun,
+                    (
+                        state,
+                        accumulated_clipped_grads0,
+                        padded_logical_batch_X,
+                        padded_logical_batch_y,
+                        masks,
+                    ),
+                )
 
-        # Compute privacy guarantees
-        epsilon, delta = compute_epsilon(
-            steps=t + 1,
-            sample_rate=q,
-            target_delta=args.target_delta,
-            noise_multiplier=noise_std,
-        )
-        privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
-        print(privacy_results, flush=True)
+                global_sum_of_clipped_grads = jax.lax.psum(accumulated_clipped_grads,axis_name='device')
+
+                return global_sum_of_clipped_grads
+            
+            accumulated_clipped_grads = jax.pmap(
+                get_acc_grads_logical_batch,
+                axis_name='device',
+                devices=jax.devices()
+            )(n_physical_batches,state,accumulated_clipped_grads0,padded_logical_batch_X,padded_logical_batch_y,masks)
+
+            noisy_grad = add_Gaussian_noise(
+                noise_rng, accumulated_clipped_grads, noise_std, C
+            )
+
+            # update
+            state = jax.block_until_ready(update_model(state, noisy_grad))
+
+            end = time.time()
+            duration = end - start
+
+            times.append(duration)
+            logical_batch_sizes.append(actual_batch_size)
+
+            print(actual_batch_size / duration, flush=True)
+
+            acc_iter = model_evaluation(state, splits_test, splits_labels)
+            print("iteration", t, "acc", acc_iter, flush=True)
+
+            # Compute privacy guarantees
+            epsilon, delta = compute_epsilon(
+                steps=t + 1,
+                sample_rate=q,
+                target_delta=args.target_delta,
+                noise_multiplier=noise_std,
+            )
+            privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
+            print(privacy_results, flush=True)
+
+    else:    
+
+    # Iteration loop (logical batch size)
+
+        for t in range(num_steps):
+            
+            sampling_rng = jax.random.key(t + 1)
+            batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
+
+            #######
+            # poisson subsample
+            actual_batch_size = poisson_sample_logical_batch_size(
+                binomial_rng=binomial_rng, dataset_size=dataset_size, q=q
+            )
+
+            # determine padded_logical_bs so that there are full physical batches
+            # and create appropriate masks to mask out unnessary elements later
+            masks, n_physical_batches = setup_physical_batches(
+                actual_batch_size=actual_batch_size,
+                physical_bs=physical_bs,
+            )
+
+            # get random padded logical batches that are slighly larger actual batch size
+            padded_logical_batch_X, padded_logical_batch_y = get_padded_logical_batch(
+                batch_rng=batch_rng,
+                padded_logical_batch_size=len(masks),
+                train_X=train_images,
+                train_y=train_labels,
+            )
+
+            padded_logical_batch_X = padded_logical_batch_X.reshape(
+                -1, 1, 3, orig_image_dimension, orig_image_dimension
+            )
+
+            # cast to GPU
+            padded_logical_batch_X = jax.device_put(
+                padded_logical_batch_X, jax.devices("gpu")[0]
+            )
+            padded_logical_batch_y = jax.device_put(
+                padded_logical_batch_y, jax.devices("gpu")[0]
+            )
+            masks = jax.device_put(masks, jax.devices("gpu")[0])
+
+            print("##### Starting gradient accumulation #####", flush=True)
+            ### gradient accumulation
+            params = state.params
+
+            accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
+
+            start = time.time()
+
+            # Main loop
+            _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
+                0,
+                n_physical_batches,
+                body_fun,
+                (
+                    state,
+                    accumulated_clipped_grads0,
+                    padded_logical_batch_X,
+                    padded_logical_batch_y,
+                    masks,
+                ),
+            )
+            noisy_grad = add_Gaussian_noise(
+                noise_rng, accumulated_clipped_grads, noise_std, C
+            )
+
+            # update
+            state = jax.block_until_ready(update_model(state, noisy_grad))
+
+            end = time.time()
+            duration = end - start
+
+            times.append(duration)
+            logical_batch_sizes.append(actual_batch_size)
+
+            print(actual_batch_size / duration, flush=True)
+
+            acc_iter = model_evaluation(state, splits_test, splits_labels)
+            print("iteration", t, "acc", acc_iter, flush=True)
+
+            # Compute privacy guarantees
+            epsilon, delta = compute_epsilon(
+                steps=t + 1,
+                sample_rate=q,
+                target_delta=args.target_delta,
+                noise_multiplier=noise_std,
+            )
+            privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
+            print(privacy_results, flush=True)
 
     acc_last = model_evaluation(state, splits_test, splits_labels)
 

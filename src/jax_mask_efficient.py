@@ -1,6 +1,7 @@
 import jax, optax
 import jax.numpy as jnp
 import numpy as np
+import math
 
 from flax.training import train_state
 
@@ -24,7 +25,7 @@ def poisson_sample_logical_batch_size(binomial_rng: jax.Array, dataset_size: int
     Parameters
     ----------
     binomial_rng : jax.Array
-        The PRNG key array for the sampling.
+        The PR§G key array for the sampling.
     dataset_size : int
         The size of the total training dataset.
     q : float
@@ -110,6 +111,46 @@ def setup_physical_batches(
 
     return masks, n_physical_batches
 
+def setup_physical_batches_distributed(
+        actual_logical_batch_size: int,
+        physical_bs: int,
+        world_size: int
+):
+    """
+    Same as the previous method, but fixed for the distributed case.
+    In this case, the logical batch must be divided into the number of workers
+    But we must ensure that the worker size is divisible by the physical size, such that
+    we ensure the use of the masking.
+    """
+    lcm = math.lcm(world_size,physical_bs)
+    padded_logical_batch_size = math.ceil(actual_logical_batch_size/lcm) * lcm
+    n_physical_batches = padded_logical_batch_size // physical_bs
+    
+    n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
+    # masks (throw away n_masked_elements later as they are only required for computing)
+    n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
+    masks = jax.device_put(
+        jnp.concatenate([jnp.ones(actual_logical_batch_size), jnp.zeros(n_masked_elements)]),
+        jax.devices("cpu")[0],
+    )
+
+    worker_batch_size = padded_logical_batch_size // world_size
+
+    assert worker_batch_size % physical_bs == 0
+
+    return masks, n_physical_batches,worker_batch_size
+
+@jax.jit
+def per_example_and_clipping(
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int,
+    mask: jax.typing.ArrayLike, C: float
+):
+    px_grads = compute_per_example_gradients_physical_batch(state, batch_X, batch_y, num_classes)
+    local_clipped_grads = clip_and_accumulate_physical_batch(px_grads, mask, C)
+    #global_sum_of_clipped_grads_from_pb = jax.lax.psum(local_clipped_grads)
+    return local_clipped_grads
+    #return global_sum_of_clipped_grads_from_pb
+    
 
 @jax.jit
 def compute_per_example_gradients_physical_batch(
