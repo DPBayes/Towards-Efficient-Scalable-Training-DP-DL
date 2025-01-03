@@ -74,8 +74,12 @@ def _parse_arguments(args, dataset_size):
 
 
 def main(args):
+    
+    jax.distributed.initialize()
 
     jax.clear_caches()
+
+    print('Distributed Jax devices: \n',jax.device_count(),jax.devices())
 
     print(args, flush=True)
 
@@ -167,7 +171,7 @@ def main(args):
             # since the distributed case needs to divide the logical batch in the number
             # of devices, we need to pad even more
             masks, n_physical_batches, worker_size = setup_physical_batches_distributed(
-                actual_batch_size=actual_batch_size,
+                actual_logical_batch_size=actual_batch_size,
                 physical_bs=physical_bs,
                 world_size=n_workers
             )
@@ -295,7 +299,7 @@ def main(args):
             # determine padded_logical_bs so that there are full physical batches
             # and create appropriate masks to mask out unnessary elements later
             masks, n_physical_batches = setup_physical_batches(
-                actual_batch_size=actual_batch_size,
+                actual_logical_batch_size=actual_batch_size,
                 physical_bs=physical_bs,
             )
 
