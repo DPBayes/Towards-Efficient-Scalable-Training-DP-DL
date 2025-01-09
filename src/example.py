@@ -213,6 +213,11 @@ def main(args):
                 [x for x in masks], jax.devices()
             )
 
+            n_physical_batches_replicated = jax.device_put_replicated(
+                n_physical_batches, 
+                jax.local_devices()
+            )
+
             print("##### Starting gradient accumulation #####", flush=True)
             ### gradient accumulation
             params = state.params
@@ -251,7 +256,7 @@ def main(args):
                 get_acc_grads_logical_batch,
                 axis_name='device',
                 devices=jax.devices()
-            )(n_physical_batches,state,accumulated_clipped_grads0,padded_logical_batch_X,padded_logical_batch_y,masks)
+            )(n_physical_batches_replicated,state,accumulated_clipped_grads0,padded_logical_batch_X,padded_logical_batch_y,masks)
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
