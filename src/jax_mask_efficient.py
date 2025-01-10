@@ -122,11 +122,11 @@ def setup_physical_batches_distributed(
     But we must ensure that the worker size is divisible by the physical size, such that
     we ensure the use of the masking.
     """
-    lcm = math.lcm(world_size,physical_bs)
+    lcm = math.lcm(world_size*physical_bs,physical_bs)
     padded_logical_batch_size = math.ceil(actual_logical_batch_size/lcm) * lcm
     n_physical_batches = padded_logical_batch_size // physical_bs
     
-    n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
+    #n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
     # masks (throw away n_masked_elements later as they are only required for computing)
     n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
     masks = jax.device_put(
@@ -135,6 +135,10 @@ def setup_physical_batches_distributed(
     )
 
     worker_batch_size = padded_logical_batch_size // world_size
+
+    print(worker_batch_size)
+    print( worker_batch_size % physical_bs)
+    print(physical_bs)
 
     assert worker_batch_size % physical_bs == 0
 

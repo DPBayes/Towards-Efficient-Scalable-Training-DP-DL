@@ -77,8 +77,6 @@ def main(args):
     
     jax.distributed.initialize()
 
-    jax.clear_caches()
-
     print('Distributed Jax devices: \n',jax.device_count(),jax.devices())
 
     print(args, flush=True)
@@ -151,7 +149,7 @@ def main(args):
             masks,
         )
     
-    distributed = True if n_workers > 0 else False
+    distributed = True if n_workers > 1 else False
 
     if distributed:
 
@@ -240,6 +238,9 @@ def main(args):
                     padded_logical_batch_X,
                     padded_logical_batch_y,
                     masks):
+                
+                print(type(padded_logical_batch_X))
+
                 _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
                     0,
                     n_physical_batches,
