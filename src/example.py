@@ -218,10 +218,10 @@ def main(args):
                 jax.local_devices()
             )
 
-            print(padded_logical_batch_X.shape)
-            print(padded_logical_batch_y.shape)
-            print(masks.shape)
-            print(n_physical_batches_replicated.shape)
+            print('size padded logical batch X(should be n devices)',len(padded_logical_batch_X))
+            print('size padded logical batch y(should be n devices)',len(padded_logical_batch_y))
+            print('size mask (should be n devices)',len(masks))
+            print('size n_physical batches replica',len(n_physical_batches_replicated))
 
             print("##### Starting gradient accumulation #####", flush=True)
             ### gradient accumulation
