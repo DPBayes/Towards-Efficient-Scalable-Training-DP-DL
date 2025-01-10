@@ -192,9 +192,9 @@ def main(args):
             # Parallelization
 
             #Multidimensional array of devices
-            devices = jax.make_mesh((n_workers,))
+            #devices = jax.make_mesh((n_workers,)) This method doesn't work for some reason
 
-            mesh = Mesh(devices, axis_names=("ax"))
+            mesh = Mesh(jax.devices(), axis_names=("ax"))
 
             sharding = NamedSharding(mesh, P("ax"))
 
