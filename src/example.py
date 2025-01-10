@@ -5,6 +5,9 @@ import time
 import warnings
 import jax
 
+from jax.sharding import Mesh,NamedSharding,PositionalSharding
+from jax.sharding import PartitionSpec as P
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -186,40 +189,58 @@ def main(args):
                 -1, 1, 3, orig_image_dimension, orig_image_dimension
             )
 
-            padded_logical_batch_X = padded_logical_batch_X.reshape(
-                n_workers,worker_size, *padded_logical_batch_X.shape[1:]
-            )
+            # Parallelization
 
-            padded_logical_batch_y = padded_logical_batch_y.reshape(
-                n_workers,worker_size, *padded_logical_batch_y.shape[1:]
-            )
+            #Multidimensional array of devices
+            devices = jax.make_mesh((n_workers,))
 
-            masks = masks.reshape(
-                n_workers,worker_size, *masks.shape[1:]
-            )
+            mesh = Mesh(devices, axis_names=("ax"))
+
+            sharding = NamedSharding(mesh, P("ax"))
+
+            shared_logical_batch_X = jax.device_put(padded_logical_batch_X, sharding)
+
+            shared_logical_batch_y = jax.device_put(padded_logical_batch_y, sharding)
+
+            shared_masks = jax.device_put(masks, sharding)
+
+            # padded_logical_batch_X = padded_logical_batch_X.reshape(
+            #     n_workers,worker_size, *padded_logical_batch_X.shape[1:]
+            # )
+
+            # padded_logical_batch_y = padded_logical_batch_y.reshape(
+            #     n_workers,worker_size, *padded_logical_batch_y.shape[1:]
+            # )
+
+            # masks = masks.reshape(
+            #     n_workers,worker_size, *masks.shape[1:]
+            # )
+
+            print(f"Data  shape: {shared_logical_batch_X.shape}")
+            print(f"Shard shape: {sharding.shard_shape(shared_logical_batch_X.shape)}")     
 
             # cast to GPU
             # Sharding must be different, the put must be to each device
 
-            padded_logical_batch_X = jax.device_put(
-                [x for x in padded_logical_batch_X], jax.devices()
-            )
-            padded_logical_batch_y = jax.device_put(
-                [x for x in padded_logical_batch_y], jax.devices()
-            )
-            masks = jax.device_put(
-                [x for x in masks], jax.devices()
-            )
+            # padded_logical_batch_X = jax.device_put(
+            #     [x for x in padded_logical_batch_X], jax.devices()
+            # )
+            # padded_logical_batch_y = jax.device_put(
+            #     [x for x in padded_logical_batch_y], jax.devices()
+            # )
+            # masks = jax.device_put(
+            #     [x for x in masks], jax.devices()
+            # )
 
-            n_physical_batches_replicated = jax.device_put_replicated(
-                n_physical_batches, 
-                jax.local_devices()
-            )
+            # n_physical_batches_replicated = jax.device_put_replicated(
+            #     n_physical_batches, 
+            #     jax.local_devices()
+            # )
 
-            print('size padded logical batch X(should be n devices)',len(padded_logical_batch_X))
-            print('size padded logical batch y(should be n devices)',len(padded_logical_batch_y))
-            print('size mask (should be n devices)',len(masks))
-            print('size n_physical batches replica',len(n_physical_batches_replicated))
+            # print('size padded logical batch X(should be n devices)',len(padded_logical_batch_X))
+            # print('size padded logical batch y(should be n devices)',len(padded_logical_batch_y))
+            # print('size mask (should be n devices)',len(masks))
+            # print('size n_physical batches replica',len(n_physical_batches_replicated))
 
             print("##### Starting gradient accumulation #####", flush=True)
             ### gradient accumulation
@@ -263,7 +284,7 @@ def main(args):
                 axis_name='device',
                 devices=jax.devices(),
                 in_axes=(None, None,None,0,0,0)
-            )(n_physical_batches,state,accumulated_clipped_grads0,padded_logical_batch_X,padded_logical_batch_y,masks)
+            )(n_physical_batches,state,accumulated_clipped_grads0,shared_logical_batch_X,shared_logical_batch_y,shared_masks)
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
