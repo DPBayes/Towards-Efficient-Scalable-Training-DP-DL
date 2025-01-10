@@ -7,6 +7,7 @@ from flax.training import train_state
 
 from data import normalize_and_reshape
 
+from functools import partial
 
 ## define some jax utility functions
 
@@ -156,7 +157,7 @@ def per_example_and_clipping(
     #return global_sum_of_clipped_grads_from_pb
     
 
-@jax.jit
+@partial(jax.jit,static_argnums=(3,))
 def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
 ):
