@@ -5,6 +5,8 @@ import time
 import warnings
 import jax
 
+from jax.experimental import mesh_utils
+
 from jax.sharding import Mesh,NamedSharding,PositionalSharding
 from jax.sharding import PartitionSpec as P
 
@@ -193,8 +195,8 @@ def main(args):
 
             #Multidimensional array of devices
             #devices = jax.make_mesh((n_workers,)) This method doesn't work for some reason
-
-            mesh = Mesh(jax.devices(), axis_names=("ax"))
+            devices = mesh_utils.create_device_mesh((n_workers,))
+            mesh = Mesh(devices, axis_names=("ax"))
 
             sharding = NamedSharding(mesh, P("ax"))
 
