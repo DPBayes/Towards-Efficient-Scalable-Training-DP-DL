@@ -137,7 +137,7 @@ def main(args):
 
         # compute grads and clip
         per_example_gradients = compute_per_example_gradients_physical_batch(
-            state, pb, yb
+            state, pb, yb, num_classes
         )
         sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(
             per_example_gradients, mask, C
