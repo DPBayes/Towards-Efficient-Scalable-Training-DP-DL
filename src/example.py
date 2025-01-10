@@ -255,7 +255,8 @@ def main(args):
             accumulated_clipped_grads = jax.pmap(
                 get_acc_grads_logical_batch,
                 axis_name='device',
-                devices=jax.devices()
+                devices=jax.devices(),
+                in_axes=(0, None,None,0,0,0)
             )(n_physical_batches_replicated,state,accumulated_clipped_grads0,padded_logical_batch_X,padded_logical_batch_y,masks)
 
             noisy_grad = add_Gaussian_noise(
