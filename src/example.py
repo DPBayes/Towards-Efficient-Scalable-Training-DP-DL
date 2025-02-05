@@ -86,7 +86,7 @@ def main(args):
     )
 
     state = create_train_state(
-        model_name=args.model,
+        model_name="google/vit-base-patch16-224",
         num_classes=num_classes,
         image_dimension=RESIZED_IMAGE_DIMENSION,
         optimizer_config=optimizer_config,
@@ -232,12 +232,6 @@ if __name__ == "__main__":
     parser.add_argument("--target_epsilon", default=1, type=float, help="target epsilon")
     parser.add_argument("--target_delta", default=1e-5, type=float, help="target delta")
 
-    parser.add_argument(
-        "--model",
-        default="google/vit-base-patch16-224",
-        type=str,
-        help="The name of the model (for loading from timm library).",
-    )
     parser.add_argument("--physical_bs", default=50, type=int, help="Physical Batch Size")
     parser.add_argument("--accountant", default="pld", type=str, help="The privacy accountant for DP training.")
 
