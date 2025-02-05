@@ -5,7 +5,6 @@ import time
 import warnings
 import jax
 
-import jax.numpy as jnp
 import numpy as np
 
 from collections import namedtuple
@@ -32,46 +31,32 @@ os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
 
+def jax_is_gpu_available():
+    # https://github.com/jax-ml/jax/issues/17624
+    # Get a list of devices available to JAX
+    devices = jax.devices()
+
+    # Check if any of the devices are GPUs
+    for device in devices:
+        if "gpu" in device.device_kind.lower():
+            return True
+
+    return False
+
+
 def _parse_arguments(args, dataset_size):
-    num_steps = args.epochs * math.ceil(dataset_size / args.bs)
 
     if dataset_size * args.target_delta > 1.0:
         warnings.warn("Your delta might be too high.")
 
-    q = 1 / math.ceil(dataset_size / args.bs)
-
-    noise_std = calculate_noise(
-        sample_rate=q,
-        target_epsilon=args.epsilon,
-        target_delta=args.target_delta,
-        steps=num_steps,
-        accountant=args.accountant,
-    )
-    C = args.grad_norm
+    subsampling_ratio = 1 / math.ceil(dataset_size / args.logical_bs)
 
     optimizer_config = namedtuple("Config", ["learning_rate"])
     optimizer_config.learning_rate = args.lr
 
-    num_classes = args.num_classes
-
-    physical_bs = args.phy_bs
-
-    test_bs_size = args.test_bs
-
-    orig_image_dimension, resized_image_dimension = 32, 224
-
     return (
-        num_steps,
-        noise_std,
-        C,
         optimizer_config,
-        num_classes,
-        q,
-        physical_bs,
-        test_bs_size,
-        dataset_size,
-        orig_image_dimension,
-        resized_image_dimension,
+        subsampling_ratio,
     )
 
 
@@ -82,25 +67,28 @@ def main(args):
     print(args, flush=True)
 
     train_images, train_labels, test_images, test_labels = load_from_huggingface("cifar100", cache_dir=None)
+    ORIG_IMAGE_DIMENSION, RESIZED_IMAGE_DIMENSION = 32, 224
+
+    num_classes = len(np.unique(train_labels))
+    dataset_size = len(train_labels)
 
     (
-        num_steps,
-        noise_std,
-        C,
         optimizer_config,
-        num_classes,
-        q,
-        physical_bs,
-        test_bs_size,
-        dataset_size,
-        orig_image_dimension,
-        resized_image_dimension,
-    ) = _parse_arguments(args=args, dataset_size=len(train_images))
+        subsampling_ratio,
+    ) = _parse_arguments(args=args, dataset_size=dataset_size)
+
+    noise_std = calculate_noise(
+        sample_rate=subsampling_ratio,
+        target_epsilon=args.target_epsilon,
+        target_delta=args.target_delta,
+        steps=args.num_steps,
+        accountant=args.accountant,
+    )
 
     state = create_train_state(
         model_name=args.model,
         num_classes=num_classes,
-        image_dimension=resized_image_dimension,
+        image_dimension=RESIZED_IMAGE_DIMENSION,
         optimizer_config=optimizer_config,
     )
 
@@ -108,34 +96,30 @@ def main(args):
     logical_batch_sizes = []
 
     @jax.jit
-    def body_fun(t, args):
+    def body_fun(t, params):
         (
             state,
             accumulated_clipped_grads,
             logical_batch_X,
             logical_batch_y,
             masks,
-        ) = args
+        ) = params
         # slice
-        start_idx = t * physical_bs
+        start_idx = t * args.physical_bs
         pb = jax.lax.dynamic_slice(
             logical_batch_X,
             (start_idx, 0, 0, 0, 0),
-            (physical_bs, 1, 3, orig_image_dimension, orig_image_dimension),
+            (args.physical_bs, 1, 3, ORIG_IMAGE_DIMENSION, ORIG_IMAGE_DIMENSION),
         )
-        yb = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
-        mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
+        yb = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (args.physical_bs,))
+        mask = jax.lax.dynamic_slice(masks, (start_idx,), (args.physical_bs,))
 
         # compute grads and clip
-        per_example_gradients = compute_per_example_gradients_physical_batch(
-            state, pb, yb, num_classes
-        )
+        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb, num_classes)
         sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(
-            per_example_gradients, mask, C
+            per_example_gradients, mask, args.clipping_norm
         )
-        accumulated_clipped_grads = add_trees(
-            accumulated_clipped_grads, sum_of_clipped_grads_from_pb
-        )
+        accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
 
         return (
             state,
@@ -145,7 +129,7 @@ def main(args):
             masks,
         )
 
-    for t in range(num_steps):
+    for t in range(args.num_steps):
 
         sampling_rng = jax.random.key(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
@@ -153,14 +137,14 @@ def main(args):
         #######
         # poisson subsample
         actual_batch_size = poisson_sample_logical_batch_size(
-            binomial_rng=binomial_rng, dataset_size=dataset_size, q=q
+            binomial_rng=binomial_rng, dataset_size=dataset_size, q=subsampling_ratio
         )
 
         # determine padded_logical_bs so that there are full physical batches
         # and create appropriate masks to mask out unnessary elements later
         masks, n_physical_batches = setup_physical_batches(
             actual_logical_batch_size=actual_batch_size,
-            physical_bs=physical_bs,
+            physical_bs=args.physical_bs,
         )
 
         # get random padded logical batches that are slighly larger actual batch size
@@ -171,12 +155,13 @@ def main(args):
             train_y=train_labels,
         )
 
-        padded_logical_batch_X = padded_logical_batch_X.reshape(-1, 1, 3, orig_image_dimension, orig_image_dimension)
+        padded_logical_batch_X = padded_logical_batch_X.reshape(-1, 1, 3, ORIG_IMAGE_DIMENSION, ORIG_IMAGE_DIMENSION)
 
         # cast to GPU
-        padded_logical_batch_X = jax.device_put(padded_logical_batch_X, jax.devices("gpu")[0])
-        padded_logical_batch_y = jax.device_put(padded_logical_batch_y, jax.devices("gpu")[0])
-        masks = jax.device_put(masks, jax.devices("gpu")[0])
+        if jax_is_gpu_available():
+            padded_logical_batch_X = jax.device_put(padded_logical_batch_X, jax.devices("gpu")[0])
+            padded_logical_batch_y = jax.device_put(padded_logical_batch_y, jax.devices("gpu")[0])
+            masks = jax.device_put(masks, jax.devices("gpu")[0])
 
         print("##### Starting gradient accumulation #####", flush=True)
         ### gradient accumulation
@@ -199,7 +184,7 @@ def main(args):
                 masks,
             ),
         )
-        noisy_grad = add_Gaussian_noise(noise_rng, accumulated_clipped_grads, noise_std, C)
+        noisy_grad = add_Gaussian_noise(noise_rng, accumulated_clipped_grads, noise_std, args.clipping_norm)
 
         # update
         state = jax.block_until_ready(update_model(state, noisy_grad))
@@ -212,7 +197,7 @@ def main(args):
 
         print(actual_batch_size / duration, flush=True)
 
-        acc_iter = model_evaluation(state, test_images, test_labels, test_bs_size)
+        acc_iter = model_evaluation(state, test_images, test_labels, test_bs_size=10)
         print("iteration", t, "acc", acc_iter, flush=True)
 
         # Compute privacy guarantees
@@ -226,7 +211,7 @@ def main(args):
         privacy_results = {"accountant": args.accountant, "epsilon": epsilon, "delta": delta}
         print(privacy_results, flush=True)
 
-    acc_last = model_evaluation(state, test_images, test_labels, test_bs_size)
+    acc_last = model_evaluation(state, test_images, test_labels, test_bs_size=10)
 
     print("times \n", times, flush=True)
 
@@ -235,3 +220,27 @@ def main(args):
     print("accuracy at end of training", acc_last, flush=True)
     thr = np.mean(np.array(logical_batch_sizes) / np.array(times))
     return thr, acc_last
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--lr", default=0.0005, type=float, help="learning rate")
+    parser.add_argument("--num_steps", default=3, type=int, help="Number of steps")
+    parser.add_argument("--logical_bs", default=1000, type=int, help="Logical batch size")
+    parser.add_argument("--clipping_norm", default=0.1, type=float, help="max grad norm")
+
+    parser.add_argument("--target_epsilon", default=1, type=float, help="target epsilon")
+    parser.add_argument("--target_delta", default=1e-5, type=float, help="target delta")
+
+    parser.add_argument(
+        "--model",
+        default="google/vit-base-patch16-224",
+        type=str,
+        help="The name of the model (for loading from timm library).",
+    )
+    parser.add_argument("--physical_bs", default=50, type=int, help="Physical Batch Size")
+    parser.add_argument("--accountant", default="pld", type=str, help="The privacy accountant for DP training.")
+
+    parser.add_argument("--seed", default=1234, type=int)
+    args = parser.parse_args()
+    main(args=args)
