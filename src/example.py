@@ -56,6 +56,8 @@ def _parse_arguments(args, dataset_size):
 
     physical_bs = args.phy_bs
 
+    test_bs_size = args.test_bs
+
     orig_image_dimension, resized_image_dimension = 32, 224
 
     return (
@@ -66,6 +68,7 @@ def _parse_arguments(args, dataset_size):
         num_classes,
         q,
         physical_bs,
+        test_bs_size,
         dataset_size,
         orig_image_dimension,
         resized_image_dimension,
@@ -88,6 +91,7 @@ def main(args):
         num_classes,
         q,
         physical_bs,
+        test_bs_size,
         dataset_size,
         orig_image_dimension,
         resized_image_dimension,
@@ -102,9 +106,6 @@ def main(args):
 
     times = []
     logical_batch_sizes = []
-
-    splits_test = jnp.split(test_images, 10)
-    splits_labels = jnp.split(test_labels, 10)
 
     @jax.jit
     def body_fun(t, args):
@@ -127,7 +128,7 @@ def main(args):
 
         # compute grads and clip
         per_example_gradients = compute_per_example_gradients_physical_batch(
-            state, pb, yb
+            state, pb, yb, num_classes
         )
         sum_of_clipped_grads_from_pb = clip_and_accumulate_physical_batch(
             per_example_gradients, mask, C
@@ -158,7 +159,7 @@ def main(args):
         # determine padded_logical_bs so that there are full physical batches
         # and create appropriate masks to mask out unnessary elements later
         masks, n_physical_batches = setup_physical_batches(
-            actual_batch_size=actual_batch_size,
+            actual_logical_batch_size=actual_batch_size,
             physical_bs=physical_bs,
         )
 
@@ -219,7 +220,7 @@ def main(args):
 
         print(actual_batch_size / duration, flush=True)
 
-        acc_iter = model_evaluation(state, splits_test, splits_labels)
+        acc_iter = model_evaluation(state, test_images, test_labels, test_bs_size)
         print("iteration", t, "acc", acc_iter, flush=True)
 
         # Compute privacy guarantees
@@ -232,7 +233,7 @@ def main(args):
         privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
         print(privacy_results, flush=True)
 
-    acc_last = model_evaluation(state, splits_test, splits_labels)
+    acc_last = model_evaluation(state, test_images, test_labels, test_bs_size)
 
     print("times \n", times, flush=True)
 
