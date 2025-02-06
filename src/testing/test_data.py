@@ -2,7 +2,7 @@ from src.data import load_from_huggingface
 
 
 def test_load_dataset():
-    train_images, train_labels, test_images, test_labels = load_from_huggingface("mnist", None)
+    train_images, train_labels, test_images, test_labels = load_from_huggingface("mnist", None, feature_name="image")
 
     # check shapes
     assert train_images.shape == (60000, 28, 28)
