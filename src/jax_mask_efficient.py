@@ -4,9 +4,8 @@ import numpy as np
 
 from flax.training import train_state
 
-from data import normalize_and_reshape
+from src.data import normalize_and_reshape
 
-import warnings
 from functools import partial
 
 ## define some jax utility functions
@@ -71,6 +70,12 @@ def get_padded_logical_batch(
 
     # take the logical batch
     dataset_size = len(train_y)
+
+    if padded_logical_batch_size < 0 or padded_logical_batch_size > dataset_size:
+        raise ValueError(
+            f"padded_logical_batch_size {padded_logical_batch_size} is invalid with dataset_size {dataset_size}"
+        )
+
     indices = jax.random.permutation(batch_rng, dataset_size)[:padded_logical_batch_size]
     padded_logical_batch_X = train_X[indices]
     padded_logical_batch_y = train_y[indices]
