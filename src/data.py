@@ -30,12 +30,12 @@ def load_from_huggingface(dataset_name : str, cache_dir : str):
     ds = ds.with_format("jax")
 
     train_images = ds["train"]["img"]
-    train_labels = ds["train"]["fine_label"]
+    train_labels = ds["train"]["label"]
     train_images = jax.device_put(train_images, device=jax.devices("cpu")[0])
     train_labels = jax.device_put(train_labels, device=jax.devices("cpu")[0])
 
     test_images = ds["test"]["img"]
-    test_labels = ds["test"]["fine_label"]
+    test_labels = ds["test"]["label"]
     test_images = jax.device_put(test_images, device=jax.devices("cpu")[0])
     test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
     return train_images, train_labels, test_images, test_labels
