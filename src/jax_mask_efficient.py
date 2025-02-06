@@ -113,7 +113,7 @@ def setup_physical_batches(
     return masks, n_physical_batches
 
 
-@partial(jax.jit,static_argnums=(3,))
+@partial(jax.jit, static_argnums=(3,))
 def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
 ):
@@ -283,6 +283,7 @@ def compute_gradients_non_dp(
 ## Evaluation
 
 
+@jax.jit
 def compute_accuracy_for_batch(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike
 ):
@@ -298,18 +299,50 @@ def compute_accuracy_for_batch(
     return correct
 
 
+@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension"])
+def test_body_fun(t, params, test_batch_size, orig_image_dimension):
+    (state, accumulated_corrects, test_X, test_y) = params
+    # slice
+    start_idx = t * test_batch_size
+    pb = jax.lax.dynamic_slice(
+        test_X,
+        (start_idx, 0, 0, 0),
+        (test_batch_size, 3, orig_image_dimension, orig_image_dimension),
+    )
+    yb = jax.lax.dynamic_slice(test_y, (start_idx,), (test_batch_size,))
+
+    n_corrects = compute_accuracy_for_batch(state, pb, yb)
+
+    accumulated_corrects += n_corrects
+
+    return (state, accumulated_corrects, test_X, test_y)
+
+
 def model_evaluation(
-    state: train_state.TrainState, test_images: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike, batch_size: int = 50
+    state: train_state.TrainState,
+    test_images: jax.typing.ArrayLike,
+    test_labels: jax.typing.ArrayLike,
+    orig_image_dimension: int,
+    batch_size: int = 50,
+    use_gpu=True,
 ):
-    
-    corr = 0
-    total = 0
-    test_size = len(test_images)
 
-    for i in range(0,test_size,batch_size):
-        pb = jax.device_put(test_images[i:i+batch_size], jax.devices("gpu")[0])
-        yb = jax.device_put(test_labels[i:i+batch_size], jax.devices("gpu")[0])
-        corr += compute_accuracy_for_batch(state, pb, yb)
-        total += len(yb)  
+    accumulated_corrects = 0
+    n_test_batches = len(test_images) // batch_size
 
-    return corr / total
+    test_images = test_images.reshape(-1, 3, orig_image_dimension, orig_image_dimension)
+
+    if use_gpu:
+        test_images = jax.device_put(test_images, jax.devices("gpu")[0])
+        test_labels = jax.device_put(test_labels, jax.devices("gpu")[0])
+
+    _, accumulated_corrects, *_ = jax.lax.fori_loop(
+        0,
+        n_test_batches,
+        lambda t, params: test_body_fun(
+            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension
+        ),
+        (state, accumulated_corrects, test_images, test_labels),
+    )
+
+    return accumulated_corrects / (n_test_batches * batch_size)
