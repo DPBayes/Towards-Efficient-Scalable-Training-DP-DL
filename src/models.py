@@ -1,17 +1,35 @@
 import jax
 import optax
+from flax.core.frozen_dict import freeze
+from flax import traverse_util
 import flax.linen as nn
 from transformers import FlaxViTForImageClassification
 from collections import namedtuple
 from flax.training import train_state
 
 
-def create_train_state(model_name: str, num_classes: int, image_dimension: int, optimizer_config: namedtuple):
+def create_train_state(
+    model_name: str, num_classes: int, image_dimension: int, optimizer_config: namedtuple, layers_to_freeze=None
+):
     """Creates initial `TrainState`."""
     rng, model, params = load_model(jax.random.key(0), model_name, image_dimension, num_classes)
 
-    # set the optimizer
-    tx = optax.adam(optimizer_config.learning_rate)
+    if layers_to_freeze is None:
+        tx = optax.adam(optimizer_config.learning_rate)
+    else:
+        # https://flax.readthedocs.io/en/v0.6.11/guides/transfer_learning.html
+        params = freeze(params)
+        partition_optimizers = {"trainable": optax.adam(optimizer_config.learning_rate), "frozen": optax.set_to_zero()}
+        param_partitions = freeze(
+            traverse_util.path_aware_map(
+                lambda path, v: (
+                    "frozen" if any([layer_to_freeze in path for layer_to_freeze in layers_to_freeze]) else "trainable"
+                ),
+                params,
+            )
+        )
+        tx = optax.multi_transform(partition_optimizers, param_partitions)
+
     return train_state.TrainState.create(apply_fn=jax.jit(model.__call__), params=params, tx=tx)
 
 
