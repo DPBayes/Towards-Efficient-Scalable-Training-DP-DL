@@ -1,3 +1,4 @@
+import math
 import jax, optax
 import jax.numpy as jnp
 import numpy as np
@@ -104,8 +105,11 @@ def setup_physical_batches(
     n_physical_batches : int
         The number of physical batches.
     """
+    if physical_bs < 1:
+        raise ValueError(f"physical_bs needs to be positive but it is {physical_bs}")
+
     # ensure full physical batches of size `physical_bs` each
-    n_physical_batches = actual_logical_batch_size // physical_bs + 1
+    n_physical_batches = math.ceil(actual_logical_batch_size / physical_bs)
     padded_logical_batch_size = n_physical_batches * physical_bs
 
     # masks (throw away n_masked_elements later as they are only required for computing)
