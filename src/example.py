@@ -80,7 +80,7 @@ def _parse_arguments(args, dataset_size):
 
 def main(args):
     
-    jax.distributed.initialize()
+    #jax.distributed.initialize()
 
     print('Distributed Jax devices: \n',jax.device_count(),jax.devices())
 
