@@ -1,13 +1,14 @@
 import math
-import jax, optax
+from functools import partial
+
+import ipdb
+import jax
 import jax.numpy as jnp
 import numpy as np
-
+import optax
 from flax.training import train_state
 
 from data import normalize_and_reshape
-
-from functools import partial
 
 ## define some jax utility functions
 
@@ -197,6 +198,56 @@ def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax
     clipping_multiplier = jnp.minimum(1.0, C / px_grad_norms)
 
     return jax.tree.map(lambda x: _clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
+
+
+@jax.jit
+def clip_physical_batch(px_grads: jax.typing.ArrayLike, C: float):
+    """Clip per-example gradients of a physical batch.
+
+    Parameters
+    ----------
+    px_grads : jax.typing.ArrayLike
+        The per-sample gradients of the physical batch.
+    C : float
+        The clipping norm of DP-SGD.
+
+    Returns
+    -------
+    clipped_px_grads: jax.typing.ArrayLike
+        The clipped per-example gradients.
+    """
+
+    px_per_param_sq_norms = jax.tree.map(lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1) ** 2, px_grads)
+    flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
+
+    px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
+
+    clipping_multiplier = jnp.minimum(1.0, C / px_grad_norms)
+
+    clipped_px_grads = jax.tree.map(lambda x: clipping_multiplier.reshape((-1,) + (1,) * (x.ndim - 1)) * x, px_grads)
+
+    return clipped_px_grads
+
+
+@jax.jit
+def accumulate_physical_batch(clipped_px_grads: jax.typing.ArrayLike, mask: jax.typing.ArrayLike):
+    """Clip and accumulate per-example gradients of a physical batch.
+
+    Parameters
+    ----------
+    clipped_px_grads : jax.typing.ArrayLike
+        The clipped per-sample gradients of the physical batch.
+    mask : jax.typing.ArrayLike
+        A mask to filter out gradients that are discarded as a small number of per-examples gradients
+        is only computed to keep the physical batch size fixed.
+
+    Returns
+    -------
+    acc_px_grads: jax.typing.ArrayLike
+        The clipped and accumulated per-example gradients after discarding the additional per-example gradients.
+    """
+
+    return jax.tree.map(lambda x: jnp.sum(mask.reshape((-1,) + (1,) * (x.ndim - 1)) * x, axis=0), clipped_px_grads)
 
 
 @jax.jit

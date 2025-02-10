@@ -1,4 +1,4 @@
-from src.data import load_from_huggingface
+from data import load_from_huggingface
 
 
 def test_load_dataset():

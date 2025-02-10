@@ -4,11 +4,17 @@ from data import normalize_and_reshape
 import flax.linen as nn
 import jax
 import numpy as np
+import jax.numpy as jnp
+import jaxlib
 import optax
 import pytest
 from flax.training import train_state
+import ipdb
 
 from jax_mask_efficient import (
+    accumulate_physical_batch,
+    clip_and_accumulate_physical_batch,
+    clip_physical_batch,
     compute_per_example_gradients_physical_batch,
     get_padded_logical_batch,
     poisson_sample_logical_batch_size,
@@ -126,3 +132,56 @@ def test_compute_per_example_gradients_physical_batch():
     for key in full_grads.keys():
         for subkey in full_grads[key].keys():
             assert np.allclose(full_grads[key][subkey], summed_px_grads[key][subkey], atol=1e-6)
+
+
+def test_clip_physical_batch():
+    state = _setup_state()
+    n = 10
+    LARGE_NUMBER = 1e3
+
+    batch_X = np.random.random_sample((n, 1, 3, 32, 32))
+    batch_y = jnp.ones((n,), dtype=int)
+    px_grads = compute_per_example_gradients_physical_batch(
+        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100
+    )
+
+    big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
+    num_parameters = sum([x.size for x in jax.tree.leaves(state.params)])
+
+    expected_un_clipped_l2_norm = jnp.sqrt(num_parameters) * LARGE_NUMBER
+
+    for c in [0.1, 10, expected_un_clipped_l2_norm + 1]:
+        clipped_px_grads = clip_physical_batch(px_grads=big_px_grads, C=c)
+        expected_norm = min(c, expected_un_clipped_l2_norm)
+        squared_acc_px_grads_norms = jax.tree.map(
+            lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1) ** 2, clipped_px_grads
+        )
+        actual_norm = jnp.sqrt(sum(jax.tree.flatten(squared_acc_px_grads_norms)[0]))
+        assert jnp.allclose(expected_norm, actual_norm)
+
+
+def test_accumulate_physical_batch():
+    state = _setup_state()
+    n = 10
+    LARGE_NUMBER = 1e3
+
+    batch_X = np.random.random_sample((n, 1, 3, 32, 32))
+    batch_y = jnp.ones((n,), dtype=int)
+    px_grads = compute_per_example_gradients_physical_batch(
+        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100
+    )
+
+    big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
+
+    for m in [0, 1, 10]:
+        m_mask = np.zeros(n)
+        m_mask[:m] = 1
+        accumulated_grads = accumulate_physical_batch(clipped_px_grads=big_px_grads, mask=m_mask)
+
+        for key in accumulated_grads.keys():
+            for subkey in accumulated_grads[key].keys():
+                assert np.allclose(accumulated_grads[key][subkey], m * big_px_grads[key][subkey])
+
+
+if __name__ == "__main__":
+    test_accumulate_physical_batch()
