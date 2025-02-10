@@ -310,10 +310,16 @@ def main(args):
                     ),
                 )
 
-                global_sum_of_clipped_grads = jax.lax.psum(
-                    accumulated_clipped_grads,
-                    axis_name='devices'
-                    )
+                global_sum_of_clipped_grads = jax.tree_util.tree_map(
+                    lambda x: jax.lax.psum(x, axis_name='devices'), 
+                    accumulated_clipped_grads
+                )
+
+
+                # global_sum_of_clipped_grads = jax.lax.psum(
+                #     accumulated_clipped_grads,
+                #     axis_name='devices'
+                # )
 
                 return global_sum_of_clipped_grads
                         
@@ -325,6 +331,8 @@ def main(args):
             # )(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
             accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
+
+            print(type(accumulated_clipped_grads))
 
             print('Is it actually summed? -----\n -----',accumulated_clipped_grads['classifier']['bias'].shape)
 
