@@ -321,6 +321,14 @@ def main(args):
                 #     axis_name='devices'
                 # )
 
+                print(global_sum_of_clipped_grads.devices())
+
+                # if len(global_sum_of_clipped_grads.devices())>1:
+                #     global_sum_of_clipped_grads = global_sum_of_clipped_grads.devices()[0]
+
+                if hasattr(global_sum_of_clipped_grads, 'sharding'):
+                    return jax.device_get(global_sum_of_clipped_grads)[0]
+
                 return global_sum_of_clipped_grads
                         
             # accumulated_clipped_grads = jax.pmap(
