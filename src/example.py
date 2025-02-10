@@ -332,6 +332,8 @@ def main(args):
 
             accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
+            accumulated_clipped_grads = jax.tree_map(lambda x: x[:x.shape[0] // jax.device_count()], accumulated_clipped_grads)
+
             print(type(accumulated_clipped_grads))
 
             print('Is it actually summed? -----\n -----',accumulated_clipped_grads['classifier']['bias'].shape)
