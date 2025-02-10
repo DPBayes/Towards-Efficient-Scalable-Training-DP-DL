@@ -279,7 +279,7 @@ def main(args):
                      mesh=mesh, 
                      in_specs=(jax.sharding.PartitionSpec(),
                                jax.sharding.PartitionSpec(),
-                               jax.sharding.PartitionSpec('devices'),
+                               jax.sharding.PartitionSpec(),
                                jax.sharding.PartitionSpec('devices'),
                                jax.sharding.PartitionSpec('devices'),
                                jax.sharding.PartitionSpec('devices')),
