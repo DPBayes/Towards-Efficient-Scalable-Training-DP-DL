@@ -275,9 +275,16 @@ def main(args):
             start = time.time()
             jax.experimental.shard_map
             # Main loop
-            @partial(jax.experimental.shard_map.shard_map, mesh=mesh, in_specs=jax.sharding.PartitionSpec('devices'),
-            out_specs=jax.sharding.PartitionSpec())
-            #@jax.jit
+            @partial(jax.experimental.shard_map.shard_map, 
+                     mesh=mesh, 
+                     in_specs=(jax.sharding.PartitionSpec('devices'),
+                               jax.sharding.PartitionSpec('devices'),
+                               jax.sharding.PartitionSpec('devices'),
+                               jax.sharding.PartitionSpec('devices'),
+                               jax.sharding.PartitionSpec('devices'),
+                               jax.sharding.PartitionSpec('devices')),
+                     out_specs=jax.sharding.PartitionSpec('devices'),
+                     check_rep=False)
             def get_acc_grads_logical_batch(
                     n_physical_batches,
                     state,
@@ -303,7 +310,12 @@ def main(args):
                     ),
                 )
 
-                global_sum_of_clipped_grads = jax.lax.psum(accumulated_clipped_grads,axis_name='devices')
+                print(accumulated_clipped_grads)
+
+                global_sum_of_clipped_grads = jax.lax.psum(
+                    accumulated_clipped_grads,
+                    axis_name='devices'
+                    )
 
                 return global_sum_of_clipped_grads
                         
