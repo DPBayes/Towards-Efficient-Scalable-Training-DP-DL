@@ -271,7 +271,7 @@ def main(args):
             params = state.params
 
             accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
-
+            print('before acc -----\n -----',accumulated_clipped_grads0['classifier']['bias'].shape)
             start = time.time()
             jax.experimental.shard_map
             # Main loop
@@ -310,8 +310,6 @@ def main(args):
                     ),
                 )
 
-                print(accumulated_clipped_grads)
-
                 global_sum_of_clipped_grads = jax.lax.psum(
                     accumulated_clipped_grads,
                     axis_name='devices'
@@ -327,6 +325,12 @@ def main(args):
             # )(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
             accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
+
+            print('Is it actually summed? -----\n -----',accumulated_clipped_grads['classifier']['bias'].shape)
+
+            print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][:100])
+
+            print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][100:])
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
