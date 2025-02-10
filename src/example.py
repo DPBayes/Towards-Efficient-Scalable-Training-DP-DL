@@ -275,8 +275,8 @@ def main(args):
             start = time.time()
             jax.experimental.shard_map
             # Main loop
-            @partial(jax.experimental.shard_map, mesh=mesh, in_specs=P('devices'),
-            out_specs=P('devices'))
+            @partial(jax.experimental.shard_map.shard_map, mesh=mesh, in_specs=jax.sharding.PartitionSpec('devices'),
+            out_specs=jax.sharding.PartitionSpec())
             #@jax.jit
             def get_acc_grads_logical_batch(
                     n_physical_batches,
