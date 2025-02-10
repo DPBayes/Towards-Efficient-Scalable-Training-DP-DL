@@ -277,8 +277,8 @@ def main(args):
             # Main loop
             @partial(jax.experimental.shard_map.shard_map, 
                      mesh=mesh, 
-                     in_specs=(jax.sharding.PartitionSpec('devices'),
-                               jax.sharding.PartitionSpec('devices'),
+                     in_specs=(jax.sharding.PartitionSpec(),
+                               jax.sharding.PartitionSpec(),
                                jax.sharding.PartitionSpec('devices'),
                                jax.sharding.PartitionSpec('devices'),
                                jax.sharding.PartitionSpec('devices'),
