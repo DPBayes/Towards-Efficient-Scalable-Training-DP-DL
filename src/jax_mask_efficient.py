@@ -5,7 +5,7 @@ import numpy as np
 
 from flax.training import train_state
 
-from src.data import normalize_and_reshape
+from data import normalize_and_reshape
 
 from functools import partial
 

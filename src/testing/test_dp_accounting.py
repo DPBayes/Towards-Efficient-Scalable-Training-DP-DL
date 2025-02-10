@@ -1,4 +1,4 @@
-from src.dp_accounting_utils import calculate_noise, compute_epsilon
+from dp_accounting_utils import calculate_noise, compute_epsilon
 import numpy as np
 
 
