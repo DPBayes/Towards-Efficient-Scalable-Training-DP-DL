@@ -1,7 +1,19 @@
-from src.jax_mask_efficient import get_padded_logical_batch
+import math
+
+from data import normalize_and_reshape
+import flax.linen as nn
 import jax
 import numpy as np
+import optax
 import pytest
+from flax.training import train_state
+
+from jax_mask_efficient import (
+    compute_per_example_gradients_physical_batch,
+    get_padded_logical_batch,
+    poisson_sample_logical_batch_size,
+    setup_physical_batches,
+)
 
 
 def test_get_padded_logical_batch():
@@ -24,3 +36,93 @@ def test_get_padded_logical_batch():
             get_padded_logical_batch(
                 batch_rng=rng, padded_logical_batch_size=padded_logical_batch_size, train_X=train_X, train_y=train_y
             )
+
+
+def test_poisson_sample_logical_batch_size():
+    rng = jax.random.key(42)
+    n = 10000
+    for q in [0.0, 1.0]:
+        assert n * q == poisson_sample_logical_batch_size(binomial_rng=rng, dataset_size=n, q=q)
+
+    samples = []
+    for _ in range(5):
+        samples.append(poisson_sample_logical_batch_size(binomial_rng=rng, dataset_size=n, q=0.5))
+
+    assert all([s == samples[0] for s in samples])
+
+
+def test_setup_physical_batches():
+    logical_bs = 2501
+
+    for p_bs in [-1, 0]:
+        with pytest.raises(ValueError):
+            setup_physical_batches(actual_logical_batch_size=logical_bs, physical_bs=p_bs)
+
+    for p_bs in [1, logical_bs - 1, logical_bs]:
+        masks, n_physical_batches = setup_physical_batches(actual_logical_batch_size=logical_bs, physical_bs=p_bs)
+        assert sum(masks) == logical_bs
+        assert len(masks) == math.ceil(logical_bs / p_bs) * p_bs
+        assert n_physical_batches == math.ceil(logical_bs / p_bs)
+
+    # physical_bs > logical_bs
+    masks, n_physical_batches = setup_physical_batches(
+        actual_logical_batch_size=logical_bs, physical_bs=logical_bs + 1
+    )
+    assert sum(masks) == logical_bs
+    assert len(masks) == logical_bs + 1
+    assert n_physical_batches == 1
+
+
+def _setup_state():
+    class CNN(nn.Module):
+        """A simple CNN model."""
+
+        @nn.compact
+        def __call__(self, x):
+            x = nn.Conv(features=64, kernel_size=(7, 7), strides=2)(x)
+            x = nn.relu(x)
+            x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2))
+            x = x.reshape((x.shape[0], -1))
+            x = nn.Dense(features=256)(x)
+            x = nn.relu(x)
+            x = nn.Dense(features=100)(x)
+            return x
+
+    model = CNN()
+
+    input_shape = (1, 3, 224, 224)
+    x = jax.random.normal(jax.random.key(42), input_shape)
+
+    variables = model.init(jax.random.key(42), x)
+    # model.apply(variables, x)
+    state = train_state.TrainState.create(
+        apply_fn=lambda x, params: model.apply({"params": params}, x), params=variables["params"], tx=optax.adam(0.1)
+    )
+    return state
+
+
+def test_compute_per_example_gradients_physical_batch():
+    state = _setup_state()
+    n = 20
+    batch_X = np.random.random_sample((n, 1, 3, 32, 32))
+    batch_y = np.ones((n,), dtype=int)
+    px_grads = compute_per_example_gradients_physical_batch(
+        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100
+    )
+
+    resizer = lambda x: normalize_and_reshape(x)
+
+    def loss_fn(params, X, y):
+        resized_X = resizer(X)
+        logits = state.apply_fn(resized_X, params=params)
+        one_hot = jax.nn.one_hot(y, num_classes=100)
+        loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
+        # assert len(loss) == 1
+        return np.sum(loss)
+
+    grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
+    full_grads = grad_fn(batch_X.reshape(n, 3, 32, 32), batch_y)
+    summed_px_grads = jax.tree.map(lambda x: x.sum(0), px_grads)
+    for key in full_grads.keys():
+        for subkey in full_grads[key].keys():
+            assert np.allclose(full_grads[key][subkey], summed_px_grads[key][subkey], atol=1e-6)
