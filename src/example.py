@@ -235,7 +235,8 @@ def main(args):
             # sharded_logical_batch_X = jax.device_put(padded_logical_batch_X)
             # sharded_logical_batch_y = jax.device_put(padded_logical_batch_y)
             # sharded_masks = jax.device_put(masks)
-
+            print(f"Non sharded shape: {padded_logical_batch_X.shape}")
+            
             print(f"Number of devices: {n_workers}")
             print(f"Sharded shape: {sharded_logical_batch_X.addressable_shards[0].data.shape}")
             print(f"Sharded shape: {sharded_logical_batch_y.addressable_shards[0].data.shape}")
@@ -259,7 +260,8 @@ def main(args):
             # print('size padded logical batch X(should be n devices)',len(padded_logical_batch_X))
             # print('size padded logical batch y(should be n devices)',len(padded_logical_batch_y))
             # print('size mask (should be n devices)',len(masks))
-            # print('size n_physical batches replica',len(n_physical_batches_replicated))
+            print('size n_physical batches',len(n_physical_batches))
+            print('size n_physical batches per worker',len(worker_size))
 
             print("##### Starting gradient accumulation #####", flush=True)
             ### gradient accumulation
@@ -280,6 +282,9 @@ def main(args):
                     masks):
                 
                 print(type(padded_logical_batch_X))
+                print(padded_logical_batch_X.shape)
+                print(padded_logical_batch_X.addressable_shards[0].data.shape)
+
 
                 _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
                     0,
