@@ -194,6 +194,9 @@ def main(args):
             # Parallelization
 
             #Multidimensional array of devices
+            mesh = jax.sharding.Mesh(jax.devices(),'devices')
+            sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
+
             #devices = jax.make_mesh((n_workers,)) This method doesn't work for some reason
             # devices = mesh_utils.create_device_mesh((n_workers,))
             # mesh = Mesh(devices, axis_names=("ax"))
@@ -206,30 +209,37 @@ def main(args):
 
             # shared_masks = jax.make_array_from_process_local_data(sharding,masks)
 
-            padded_logical_batch_X = padded_logical_batch_X.reshape(
-                n_workers,worker_size, *padded_logical_batch_X.shape[1:]
-            )
+            # No longer necessary, I make it explicit
 
-            padded_logical_batch_y = padded_logical_batch_y.reshape(
-                n_workers,worker_size, *padded_logical_batch_y.shape[1:]
-            )
+            # padded_logical_batch_X = padded_logical_batch_X.reshape(
+            #     n_workers,worker_size, *padded_logical_batch_X.shape[1:]
+            # )
 
-            masks = masks.reshape(
-                n_workers,worker_size, *masks.shape[1:]
-            )
+            # padded_logical_batch_y = padded_logical_batch_y.reshape(
+            #     n_workers,worker_size, *padded_logical_batch_y.shape[1:]
+            # )
+
+            # masks = masks.reshape(
+            #     n_workers,worker_size, *masks.shape[1:]
+            # )
 
             #print(f"Data  shape: {shared_logical_batch_X.shape}")
             #print(f"Shard shape: {sharding.shard_shape(shared_logical_batch_X.shape)}")     
 
             # cast to GPU
             # Sharding must be different, the put must be to each device
-
-            sharded_logical_batch_X = jax.device_put(padded_logical_batch_X)
-            sharded_logical_batch_y = jax.device_put(padded_logical_batch_y)
-            sharded_masks = jax.device_put(masks)
+            sharded_logical_batch_X = jax.device_put(padded_logical_batch_X,sharding)
+            sharded_logical_batch_y = jax.device_put(padded_logical_batch_y,sharding)
+            sharded_masks = jax.device_put(masks,sharding)
+            
+            # sharded_logical_batch_X = jax.device_put(padded_logical_batch_X)
+            # sharded_logical_batch_y = jax.device_put(padded_logical_batch_y)
+            # sharded_masks = jax.device_put(masks)
 
             print(f"Number of devices: {n_workers}")
-            print(f"Sharded shape: {padded_logical_batch_X.shape}")
+            print(f"Sharded shape: {sharded_logical_batch_X.addressable_shards[0].data.shape}")
+            print(f"Sharded shape: {sharded_logical_batch_y.addressable_shards[0].data.shape}")
+            print(f"Sharded shape: {sharded_masks.addressable_shards[0].data.shape}")
 
             # padded_logical_batch_X = jax.device_put(
             #     [x for x in padded_logical_batch_X], jax.devices()
@@ -284,7 +294,7 @@ def main(args):
                     ),
                 )
 
-                global_sum_of_clipped_grads = jax.lax.psum(accumulated_clipped_grads,axis_name='device')
+                global_sum_of_clipped_grads = jax.lax.psum(accumulated_clipped_grads,axis_name='devices')
 
                 return global_sum_of_clipped_grads
                         
