@@ -326,9 +326,9 @@ def main(args):
                 # if len(global_sum_of_clipped_grads.devices())>1:
                 #     global_sum_of_clipped_grads = global_sum_of_clipped_grads.devices()[0]
 
-                if hasattr(global_sum_of_clipped_grads, 'sharding'):
-                    print('it has some sharding')
-                    return jax.device_get(global_sum_of_clipped_grads)[0]
+                # if hasattr(global_sum_of_clipped_grads, 'sharding'):
+                #     print('it has some sharding')
+                #     return jax.device_get(global_sum_of_clipped_grads)[0]
 
                 return global_sum_of_clipped_grads
                         
@@ -342,6 +342,8 @@ def main(args):
             accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
             accumulated_clipped_grads = jax.tree_map(lambda x: x[:x.shape[0] // jax.device_count()], accumulated_clipped_grads)
+
+            jax.device_put(accumulated_clipped_grads,jax.devices()[0])
 
             print(type(accumulated_clipped_grads))
 
