@@ -166,7 +166,7 @@ def main(args):
         #Multidimensional array of devices
         mesh = jax.sharding.Mesh(jax.devices(),'devices')
         sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
-
+        model_sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec())
         # Main loop
         @partial(jax.experimental.shard_map.shard_map, 
                     mesh=mesh, 
@@ -276,6 +276,10 @@ def main(args):
             sharded_logical_batch_X = jax.device_put(padded_logical_batch_X,sharding)
             sharded_logical_batch_y = jax.device_put(padded_logical_batch_y,sharding)
             sharded_masks = jax.device_put(masks,sharding)
+
+            #Shard state
+
+            shard_state = jax.device_put(state,model_sharding)
             
             # sharded_logical_batch_X = jax.device_put(padded_logical_batch_X)
             # sharded_logical_batch_y = jax.device_put(padded_logical_batch_y)
@@ -324,7 +328,7 @@ def main(args):
             #     in_axes=(None, None,None,0,0,0)
             # )(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
-            accumulated_clipped_grads = jit_acc_fun(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
+            accumulated_clipped_grads = jit_acc_fun(n_physical_batches,shard_state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
             #accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
