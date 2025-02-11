@@ -354,7 +354,7 @@ def compute_accuracy_for_batch(
     """Computes accuracy for a single batch."""
     if resizer is None:
         resizer = lambda x: x
-    
+
     if batch_X.size == 0:
         return 0
 
@@ -413,4 +413,15 @@ def model_evaluation(
         (state, accumulated_corrects, test_images, test_labels),
     )
 
-    return accumulated_corrects / (n_test_batches * batch_size)
+    # last remaining samples (basically the part that isn't a full batch)
+    processed_samples = n_test_batches * batch_size
+    
+    n_remaining = len(test_images) % batch_size
+    if n_remaining > 0:
+        pb = test_images[-n_remaining:]
+        yb = test_labels[-n_remaining:]
+        n_corrects = compute_accuracy_for_batch(state, pb, yb)
+        accumulated_corrects += n_corrects
+        processed_samples += n_remaining
+
+    return accumulated_corrects / processed_samples

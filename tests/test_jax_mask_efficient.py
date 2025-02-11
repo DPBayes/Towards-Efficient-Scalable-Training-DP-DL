@@ -14,6 +14,7 @@ from src.jax_mask_efficient import (
     compute_accuracy_for_batch,
     compute_per_example_gradients_physical_batch,
     get_padded_logical_batch,
+    model_evaluation,
     poisson_sample_logical_batch_size,
     setup_physical_batches,
 )
@@ -201,6 +202,61 @@ def test_compute_accuracy_for_batch():
     batch_y = jnp.array([])
     accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
     assert accuracy == 0
+
+
+def test_model_evaluation_combined():
+    
+
+    orig_image_dimension = 2
+    batch_size = 2
+    n_images = 4
+    test_images = jnp.zeros((n_images, 3, orig_image_dimension, orig_image_dimension))
+    test_labels = jnp.zeros((n_images,), dtype=jnp.int32)
+
+    # All correct predictions.
+    state_correct = train_state.TrainState.create(
+        apply_fn=lambda x, params: (jnp.array([[0.9, 0.1]] * x.shape[0]), None),
+        params={},
+        tx=optax.sgd(learning_rate=0.1),
+    )
+    acc_all_correct = model_evaluation(state_correct, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    assert acc_all_correct == 1.0
+
+    # Zero accuracy (state predicts wrong class).
+    state_wrong = train_state.TrainState.create(
+        apply_fn=lambda x, params: (jnp.array([[0.1, 0.9]] * x.shape[0]), None),
+        params={},
+        tx=optax.sgd(learning_rate=0.1),
+    )
+    acc_zero = model_evaluation(state_wrong, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    assert acc_zero == 0.0
+
+    # Intermediate accuracy.
+    def custom_apply(x, params):
+        condition = x[:, 0, 0, 0] < 0.5
+        predictions = jnp.where(condition, jnp.array([[0.9, 0.1]] * x.shape[0]), jnp.array([[0.1, 0.9]] * x.shape[0]))
+        return predictions
+
+    state_mixed = train_state.TrainState.create(
+        apply_fn=custom_apply,
+        params={},
+        tx=optax.sgd(learning_rate=0.1),
+    )
+    batch1 = jnp.zeros((2, 3, orig_image_dimension, orig_image_dimension))
+    batch2 = jnp.ones((2, 3, orig_image_dimension, orig_image_dimension))
+    test_images_mixed = jnp.concatenate([batch1, batch2], axis=0)
+    test_labels_mixed = jnp.zeros((n_images,), dtype=jnp.int32)
+    acc_intermediate = model_evaluation(state_mixed, test_images_mixed, test_labels_mixed, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    assert acc_intermediate == 0.5
+
+    # No complete batches.
+    batch1 = jnp.zeros((2, 3, orig_image_dimension, orig_image_dimension))
+    batch2 = jnp.ones((2, 3, orig_image_dimension, orig_image_dimension))
+    batch3 = jnp.ones((1, 3, orig_image_dimension, orig_image_dimension))
+    test_images_incomplete = jnp.concatenate([batch1, batch2, batch3], axis=0)
+    test_labels_incomplete = jnp.zeros((5,), dtype=jnp.int32)
+    acc_not_complete = model_evaluation(state_mixed, test_images_incomplete, test_labels_incomplete, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    assert acc_not_complete == 0.4
 
 
 if __name__ == "__main__":
