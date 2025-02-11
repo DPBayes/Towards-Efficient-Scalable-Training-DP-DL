@@ -292,58 +292,6 @@ def update_model(state: train_state.TrainState, grads):
     return state.apply_gradients(grads=grads)
 
 
-## NON-DP
-
-
-@jax.jit
-def compute_gradients_non_dp(
-    state: train_state.TrainState,
-    batch_X: jax.typing.ArrayLike,
-    batch_y: jax.typing.ArrayLike,
-    mask: jax.typing.ArrayLike,
-    num_classes: int,
-    resizer=None,
-):
-    """Computes the non-DP gradients for a physical batch.
-
-    Parameters
-    ----------
-    state : train_state.TrainState
-        The model train state.
-    batch_X : jax.typing.ArrayLike
-        The features of the physical batch.
-    batch_y : jax.typing.ArrayLike
-        The labels of the physical batch.
-    mask : jax.typing.ArrayLike
-        A mask to filter out gradients that are discarded as a small number of gradients
-        is only computed to keep the physical batch size fixed.
-    num_classes : int
-        The number of classes for one-hot encoding.
-    resizer : function, optional
-        A function to resize the input data. If None, defaults to a lambda that returns x.
-
-    Returns
-    -------
-    acc_grads: jax.typing.ArrayLike
-        The accumulated per-example gradients after discarding the additional gradients (see mask).
-    """
-    if resizer is None:
-        resizer = lambda x: x
-
-    def loss_fn(params, X, y):
-        resized_X = resizer(X)
-        logits = state.apply_fn(resized_X, params=params)[0]
-        one_hot = jax.nn.one_hot(y, num_classes=num_classes)
-        loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
-        masked_loss = loss * mask
-        return masked_loss.sum()
-
-    grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
-    sum_of_grads = grad_fn(batch_X, batch_y)
-
-    return sum_of_grads
-
-
 ## Evaluation
 
 
@@ -415,7 +363,7 @@ def model_evaluation(
 
     # last remaining samples (basically the part that isn't a full batch)
     processed_samples = n_test_batches * batch_size
-    
+
     n_remaining = len(test_images) % batch_size
     if n_remaining > 0:
         pb = test_images[-n_remaining:]
