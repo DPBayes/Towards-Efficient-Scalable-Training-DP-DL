@@ -115,7 +115,7 @@ If you use this code, please cite our [paper](https://arxiv.org/abs/2406.17298)
 ```
 @misc{beltran2024efficientscalabletrainingdifferentially,
       title={Towards Efficient and Scalable Training of Differentially Private Deep Learning}, 
-      author={Sebastian Rodriguez Beltran and Marlon Tobaben and Niki Loppi and Antti Honkela},
+      author={Sebastian Rodriguez Beltran and Marlon Tobaben and Joonas J{\"{a}}lk{\"{o}} and Niki Loppi and Antti Honkela},
       year={2024},
       eprint={2406.17298},
       archivePrefix={arXiv},
