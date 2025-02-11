@@ -360,7 +360,7 @@ def main(args):
             # update
             state = jax.block_until_ready(update_model(state, noisy_grad))
 
-            print(state.device(),state.params.device())
+            print(state.params.device())
 
             end = time.time()
             duration = end - start
