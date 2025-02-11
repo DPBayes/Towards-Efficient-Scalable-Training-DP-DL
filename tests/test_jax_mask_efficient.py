@@ -1,19 +1,15 @@
 import math
 
-from data import normalize_and_reshape
 import flax.linen as nn
 import jax
-import numpy as np
 import jax.numpy as jnp
-import jaxlib
+import numpy as np
 import optax
 import pytest
 from flax.training import train_state
-import ipdb
 
-from jax_mask_efficient import (
+from src.jax_mask_efficient import (
     accumulate_physical_batch,
-    clip_and_accumulate_physical_batch,
     clip_physical_batch,
     compute_per_example_gradients_physical_batch,
     get_padded_logical_batch,
@@ -96,7 +92,7 @@ def _setup_state():
 
     model = CNN()
 
-    input_shape = (1, 3, 224, 224)
+    input_shape = (1, 3, 32, 32)
     x = jax.random.normal(jax.random.key(42), input_shape)
 
     variables = model.init(jax.random.key(42), x)
@@ -112,14 +108,13 @@ def test_compute_per_example_gradients_physical_batch():
     n = 20
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = np.ones((n,), dtype=int)
+    dummy_resizer = lambda x: x  # Dummy resizer
     px_grads = compute_per_example_gradients_physical_batch(
-        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100
+        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100, resizer=None
     )
 
-    resizer = lambda x: normalize_and_reshape(x)
-
     def loss_fn(params, X, y):
-        resized_X = resizer(X)
+        resized_X = dummy_resizer(X)
         logits = state.apply_fn(resized_X, params=params)
         one_hot = jax.nn.one_hot(y, num_classes=100)
         loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
@@ -142,7 +137,7 @@ def test_clip_physical_batch():
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = jnp.ones((n,), dtype=int)
     px_grads = compute_per_example_gradients_physical_batch(
-        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100
+        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100, resizer=None
     )
 
     big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
@@ -168,7 +163,7 @@ def test_accumulate_physical_batch():
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = jnp.ones((n,), dtype=int)
     px_grads = compute_per_example_gradients_physical_batch(
-        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100
+        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100, resizer=None
     )
 
     big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
