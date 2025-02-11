@@ -10,6 +10,7 @@ from flax.training import train_state
 
 from src.jax_mask_efficient import (
     accumulate_physical_batch,
+    add_Gaussian_noise,
     clip_physical_batch,
     compute_accuracy_for_batch,
     compute_per_example_gradients_physical_batch,
@@ -17,6 +18,7 @@ from src.jax_mask_efficient import (
     model_evaluation,
     poisson_sample_logical_batch_size,
     setup_physical_batches,
+    update_model,
 )
 
 
@@ -205,7 +207,6 @@ def test_compute_accuracy_for_batch():
 
 
 def test_model_evaluation_combined():
-    
 
     orig_image_dimension = 2
     batch_size = 2
@@ -219,7 +220,9 @@ def test_model_evaluation_combined():
         params={},
         tx=optax.sgd(learning_rate=0.1),
     )
-    acc_all_correct = model_evaluation(state_correct, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    acc_all_correct = model_evaluation(
+        state_correct, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False
+    )
     assert acc_all_correct == 1.0
 
     # Zero accuracy (state predicts wrong class).
@@ -228,7 +231,9 @@ def test_model_evaluation_combined():
         params={},
         tx=optax.sgd(learning_rate=0.1),
     )
-    acc_zero = model_evaluation(state_wrong, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    acc_zero = model_evaluation(
+        state_wrong, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False
+    )
     assert acc_zero == 0.0
 
     # Intermediate accuracy.
@@ -246,7 +251,9 @@ def test_model_evaluation_combined():
     batch2 = jnp.ones((2, 3, orig_image_dimension, orig_image_dimension))
     test_images_mixed = jnp.concatenate([batch1, batch2], axis=0)
     test_labels_mixed = jnp.zeros((n_images,), dtype=jnp.int32)
-    acc_intermediate = model_evaluation(state_mixed, test_images_mixed, test_labels_mixed, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    acc_intermediate = model_evaluation(
+        state_mixed, test_images_mixed, test_labels_mixed, orig_image_dimension, batch_size=batch_size, use_gpu=False
+    )
     assert acc_intermediate == 0.5
 
     # No complete batches.
@@ -255,9 +262,40 @@ def test_model_evaluation_combined():
     batch3 = jnp.ones((1, 3, orig_image_dimension, orig_image_dimension))
     test_images_incomplete = jnp.concatenate([batch1, batch2, batch3], axis=0)
     test_labels_incomplete = jnp.zeros((5,), dtype=jnp.int32)
-    acc_not_complete = model_evaluation(state_mixed, test_images_incomplete, test_labels_incomplete, orig_image_dimension, batch_size=batch_size, use_gpu=False)
+    acc_not_complete = model_evaluation(
+        state_mixed,
+        test_images_incomplete,
+        test_labels_incomplete,
+        orig_image_dimension,
+        batch_size=batch_size,
+        use_gpu=False,
+    )
     assert acc_not_complete == 0.4
 
+
+def test_update_model():
+    learning_rate = 0.1
+    state = train_state.TrainState.create(
+        apply_fn=lambda x, params: x,
+        params={"w": jnp.array([1.0, 2.0]), "b": jnp.array([0.5])},
+        tx=optax.sgd(learning_rate=learning_rate),
+    )
+
+    # Nonzero gradients.
+    nonzero_grads = {"w": jnp.array([0.1, 0.1]), "b": jnp.array([0.1])}
+    updated_state = update_model(state, nonzero_grads)
+    expected_params = {
+        "w": state.params["w"] - learning_rate * nonzero_grads["w"],
+        "b": state.params["b"] - learning_rate * nonzero_grads["b"],
+    }
+    assert jnp.allclose(updated_state.params["w"], expected_params["w"])
+    assert jnp.allclose(updated_state.params["b"], expected_params["b"])
+
+    # Zero gradients; parameters should remain unchanged.
+    zero_grads = {"w": jnp.zeros_like(state.params["w"]), "b": jnp.zeros_like(state.params["b"])}
+    updated_state_zero = update_model(state, zero_grads)
+    assert jnp.allclose(updated_state_zero.params["w"], state.params["w"])
+    assert jnp.allclose(updated_state_zero.params["b"], state.params["b"])
 
 if __name__ == "__main__":
     test_accumulate_physical_batch()
