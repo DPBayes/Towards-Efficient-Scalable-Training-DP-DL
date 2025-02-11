@@ -269,15 +269,16 @@ def main(args):
 
             accumulated_clipped_grads = jit_acc_fun(n_physical_batches,shard_state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
-            print('iteration',t,'\n:',type(accumulated_clipped_grads),'\n ------ \n',accumulated_clipped_grads)
+            print('iteration',t,'\n:',type(accumulated_clipped_grads),'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
 
+            #Get them in only one device and apply noise
             accumulated_clipped_grads = jax.device_put(accumulated_clipped_grads,jax.devices()[0])
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
             )
 
-            # update
+            # update the original state
             state = jax.block_until_ready(update_model(state, noisy_grad))
 
             end = time.time()
