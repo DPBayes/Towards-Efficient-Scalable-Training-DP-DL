@@ -173,7 +173,7 @@ def test_accumulate_physical_batch():
 
     big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
 
-    for m in [0, 1, 10]:
+    for m in [0, 1, n]:
         m_mask = np.zeros(n)
         m_mask[:m] = 1
         accumulated_grads = accumulate_physical_batch(clipped_px_grads=big_px_grads, mask=m_mask)
