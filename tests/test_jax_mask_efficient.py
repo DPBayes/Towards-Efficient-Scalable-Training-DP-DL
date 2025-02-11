@@ -11,6 +11,7 @@ from flax.training import train_state
 from src.jax_mask_efficient import (
     accumulate_physical_batch,
     clip_physical_batch,
+    compute_accuracy_for_batch,
     compute_per_example_gradients_physical_batch,
     get_padded_logical_batch,
     poisson_sample_logical_batch_size,
@@ -176,6 +177,30 @@ def test_accumulate_physical_batch():
         for key in accumulated_grads.keys():
             for subkey in accumulated_grads[key].keys():
                 assert np.allclose(accumulated_grads[key][subkey], m * big_px_grads[key][subkey])
+
+
+def test_compute_accuracy_for_batch():
+    state = train_state.TrainState.create(
+        apply_fn=lambda x, params: (x, None), params={}, tx=optax.sgd(learning_rate=0.1)
+    )
+
+    # All correct
+    batch_X = jnp.array([[0.9, 0.1], [0.2, 0.8]])
+    batch_y = jnp.array([0, 1])
+    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
+    assert accuracy == 2
+
+    # All wrong
+    batch_X = jnp.array([[0.5, 0.9], [0.7, 0.8]])
+    batch_y = jnp.array([0, 0])
+    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
+    assert accuracy == 0
+
+    # Empty batch
+    batch_X = jnp.array([]).reshape(0, 2)
+    batch_y = jnp.array([])
+    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
+    assert accuracy == 0
 
 
 if __name__ == "__main__":

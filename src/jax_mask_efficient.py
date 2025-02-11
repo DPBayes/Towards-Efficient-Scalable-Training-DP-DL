@@ -354,6 +354,10 @@ def compute_accuracy_for_batch(
     """Computes accuracy for a single batch."""
     if resizer is None:
         resizer = lambda x: x
+    
+    if batch_X.size == 0:
+        return 0
+
     resized_X = resizer(batch_X)
     logits = state.apply_fn(resized_X, state.params)[0]
     predicted_class = jnp.argmax(logits, axis=-1)
