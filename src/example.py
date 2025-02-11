@@ -167,6 +167,47 @@ def main(args):
         mesh = jax.sharding.Mesh(jax.devices(),'devices')
         sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
 
+        # Main loop
+        @partial(jax.experimental.shard_map.shard_map, 
+                    mesh=mesh, 
+                    in_specs=(jax.sharding.PartitionSpec(),
+                            jax.sharding.PartitionSpec(),
+                            jax.sharding.PartitionSpec(),
+                            jax.sharding.PartitionSpec('devices'),
+                            jax.sharding.PartitionSpec('devices'),
+                            jax.sharding.PartitionSpec('devices')),
+                    out_specs=jax.sharding.PartitionSpec(),
+                    check_rep=False)
+        def get_acc_grads_logical_batch(
+                n_physical_batches,
+                state,
+                accumulated_clipped_grads0,
+                padded_logical_batch_X,
+                padded_logical_batch_y,
+                masks):
+    
+            _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
+                0,
+                n_physical_batches,
+                body_fun,
+                (
+                    state,
+                    accumulated_clipped_grads0,
+                    padded_logical_batch_X,
+                    padded_logical_batch_y,
+                    masks,
+                ),
+            )
+
+            global_sum_of_clipped_grads = jax.tree_util.tree_map(
+                lambda x: jax.lax.psum(x, axis_name='devices'), 
+                accumulated_clipped_grads
+            )
+
+            return global_sum_of_clipped_grads
+
+        jit_acc_fun = jax.jit(get_acc_grads_logical_batch)
+
         for t in range(num_steps):
             
             sampling_rng = jax.random.key(t + 1)
@@ -275,63 +316,6 @@ def main(args):
             print('before acc -----\n -----',accumulated_clipped_grads0['classifier']['bias'].shape)
             start = time.time()
 
-            # Main loop
-            @partial(jax.experimental.shard_map.shard_map, 
-                     mesh=mesh, 
-                     in_specs=(jax.sharding.PartitionSpec(),
-                               jax.sharding.PartitionSpec(),
-                               jax.sharding.PartitionSpec(),
-                               jax.sharding.PartitionSpec('devices'),
-                               jax.sharding.PartitionSpec('devices'),
-                               jax.sharding.PartitionSpec('devices')),
-                     out_specs=jax.sharding.PartitionSpec('devices'),
-                     check_rep=False)
-            def get_acc_grads_logical_batch(
-                    n_physical_batches,
-                    state,
-                    accumulated_clipped_grads0,
-                    padded_logical_batch_X,
-                    padded_logical_batch_y,
-                    masks):
-                
-                print(type(padded_logical_batch_X))
-                print(padded_logical_batch_X.shape)
-                #print(padded_logical_batch_X.addressable_shards[0].data.shape)
-
-                _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
-                    0,
-                    n_physical_batches,
-                    body_fun,
-                    (
-                        state,
-                        accumulated_clipped_grads0,
-                        padded_logical_batch_X,
-                        padded_logical_batch_y,
-                        masks,
-                    ),
-                )
-
-                global_sum_of_clipped_grads = jax.tree_util.tree_map(
-                    lambda x: jax.lax.psum(x, axis_name='devices'), 
-                    accumulated_clipped_grads
-                )
-
-
-                # global_sum_of_clipped_grads = jax.lax.psum(
-                #     accumulated_clipped_grads,
-                #     axis_name='devices'
-                # )
-
-                #print(global_sum_of_clipped_grads.devices())
-
-                # if len(global_sum_of_clipped_grads.devices())>1:
-                #     global_sum_of_clipped_grads = global_sum_of_clipped_grads.devices()[0]
-
-                # if hasattr(global_sum_of_clipped_grads, 'sharding'):
-                #     print('it has some sharding')
-                #     return jax.device_get(global_sum_of_clipped_grads)[0]
-
-                return global_sum_of_clipped_grads
                         
             # accumulated_clipped_grads = jax.pmap(
             #     get_acc_grads_logical_batch,
@@ -340,9 +324,11 @@ def main(args):
             #     in_axes=(None, None,None,0,0,0)
             # )(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
-            accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
+            accumulated_clipped_grads = jit_acc_fun(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
-            accumulated_clipped_grads = jax.tree_map(lambda x: x[:x.shape[0] // jax.device_count()], accumulated_clipped_grads)
+            #accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
+
+            #accumulated_clipped_grads = jax.tree_map(lambda x: x[:x.shape[0] // jax.device_count()], accumulated_clipped_grads)
 
             accumulated_clipped_grads = jax.device_put(accumulated_clipped_grads,jax.devices()[0])
 
