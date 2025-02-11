@@ -1,14 +1,9 @@
 import math
 from functools import partial
-
-import ipdb
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 from flax.training import train_state
-
-from data import normalize_and_reshape
 
 ## define some jax utility functions
 
@@ -125,7 +120,11 @@ def setup_physical_batches(
 
 @partial(jax.jit, static_argnums=(3,))
 def compute_per_example_gradients_physical_batch(
-    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, num_classes: int
+    state: train_state.TrainState,
+    batch_X: jax.typing.ArrayLike,
+    batch_y: jax.typing.ArrayLike,
+    num_classes: int,
+    resizer=None,
 ):
     """Computes the per-example gradients for a physical batch.
 
@@ -139,14 +138,16 @@ def compute_per_example_gradients_physical_batch(
         The labels of the physical batch.
     num_classes : int
         The number of classes for one-hot encoding.
+    resizer : function, optional
+        A function to resize the input data. If None, defaults to a lambda that returns x.
 
     Returns
     -------
     px_grads : jax.typing.ArrayLike
         The per-sample gradients of the physical batch.
     """
-
-    resizer = lambda x: normalize_and_reshape(x)
+    if resizer is None:
+        resizer = lambda x: x
 
     def loss_fn(params, X, y):
         resized_X = resizer(X)
@@ -301,6 +302,7 @@ def compute_gradients_non_dp(
     batch_y: jax.typing.ArrayLike,
     mask: jax.typing.ArrayLike,
     num_classes: int,
+    resizer=None,
 ):
     """Computes the non-DP gradients for a physical batch.
 
@@ -317,14 +319,16 @@ def compute_gradients_non_dp(
         is only computed to keep the physical batch size fixed.
     num_classes : int
         The number of classes for one-hot encoding.
+    resizer : function, optional
+        A function to resize the input data. If None, defaults to a lambda that returns x.
 
     Returns
     -------
     acc_grads: jax.typing.ArrayLike
         The accumulated per-example gradients after discarding the additional gradients (see mask).
     """
-
-    resizer = lambda x: normalize_and_reshape(x)
+    if resizer is None:
+        resizer = lambda x: x
 
     def loss_fn(params, X, y):
         resized_X = resizer(X)
@@ -345,11 +349,11 @@ def compute_gradients_non_dp(
 
 @jax.jit
 def compute_accuracy_for_batch(
-    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, resizer=None
 ):
     """Computes accuracy for a single batch."""
-
-    resizer = lambda x: normalize_and_reshape(x)
+    if resizer is None:
+        resizer = lambda x: x
     resized_X = resizer(batch_X)
     logits = state.apply_fn(resized_X, state.params)[0]
     predicted_class = jnp.argmax(logits, axis=-1)
