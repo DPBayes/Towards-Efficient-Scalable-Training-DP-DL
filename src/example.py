@@ -343,7 +343,7 @@ def main(args):
 
             accumulated_clipped_grads = jax.tree_map(lambda x: x[:x.shape[0] // jax.device_count()], accumulated_clipped_grads)
 
-            jax.device_put(accumulated_clipped_grads,jax.devices()[0])
+            accumulated_clipped_grads = jax.device_put(accumulated_clipped_grads,jax.devices()[0])
 
             print(type(accumulated_clipped_grads))
 
@@ -360,7 +360,7 @@ def main(args):
             # update
             state = jax.block_until_ready(update_model(state, noisy_grad))
 
-            print(state)
+            print(state.device(),state.params.device())
 
             end = time.time()
             duration = end - start
@@ -368,7 +368,7 @@ def main(args):
             times.append(duration)
             logical_batch_sizes.append(actual_batch_size)
 
-            print(actual_batch_size / duration, flush=True)
+            print('thr',actual_batch_size / duration, flush=True)
 
             acc_iter = model_evaluation(state, splits_test, splits_labels)
             print("iteration", t, "acc", acc_iter, flush=True)
