@@ -161,6 +161,12 @@ def main(args):
 
     if distributed:
 
+        # Parallelization
+
+        #Multidimensional array of devices
+        mesh = jax.sharding.Mesh(jax.devices(),'devices')
+        sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
+
         for t in range(num_steps):
             
             sampling_rng = jax.random.key(t + 1)
@@ -194,11 +200,6 @@ def main(args):
                 -1, 1, 3, orig_image_dimension, orig_image_dimension
             )
 
-            # Parallelization
-
-            #Multidimensional array of devices
-            mesh = jax.sharding.Mesh(jax.devices(),'devices')
-            sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
 
             #devices = jax.make_mesh((n_workers,)) This method doesn't work for some reason
             # devices = mesh_utils.create_device_mesh((n_workers,))
@@ -273,7 +274,7 @@ def main(args):
             accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
             print('before acc -----\n -----',accumulated_clipped_grads0['classifier']['bias'].shape)
             start = time.time()
-            jax.experimental.shard_map
+
             # Main loop
             @partial(jax.experimental.shard_map.shard_map, 
                      mesh=mesh, 
@@ -345,13 +346,13 @@ def main(args):
 
             accumulated_clipped_grads = jax.device_put(accumulated_clipped_grads,jax.devices()[0])
 
-            print(type(accumulated_clipped_grads))
+            #print(type(accumulated_clipped_grads))
 
-            print('Is it actually summed? -----\n -----',accumulated_clipped_grads['classifier']['bias'].shape)
+            #print('Is it actually summed? -----\n -----',accumulated_clipped_grads['classifier']['bias'].shape)
 
-            print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][:100])
+            #print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][:100])
 
-            print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][100:])
+            #print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][100:])
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
@@ -360,7 +361,7 @@ def main(args):
             # update
             state = jax.block_until_ready(update_model(state, noisy_grad))
 
-            print(state.params.device())
+            #print(state.params.device())
 
             end = time.time()
             duration = end - start
