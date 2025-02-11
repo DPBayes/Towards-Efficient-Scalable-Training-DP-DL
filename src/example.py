@@ -83,8 +83,6 @@ def _parse_arguments(args, dataset_size):
 
 def main(args):
     
-    #jax.distributed.initialize()
-
     print('Distributed Jax devices: \n',jax.device_count(),jax.devices())
 
     print(args, flush=True)
@@ -167,6 +165,7 @@ def main(args):
         mesh = jax.sharding.Mesh(jax.devices(),'devices')
         sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
         model_sharding = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec())
+        
         # Main loop
         @partial(jax.experimental.shard_map.shard_map, 
                     mesh=mesh, 
@@ -241,108 +240,38 @@ def main(args):
                 -1, 1, 3, orig_image_dimension, orig_image_dimension
             )
 
-
-            #devices = jax.make_mesh((n_workers,)) This method doesn't work for some reason
-            # devices = mesh_utils.create_device_mesh((n_workers,))
-            # mesh = Mesh(devices, axis_names=("ax"))
-
-            # sharding = NamedSharding(mesh, P("ax"))
-
-            # shared_logical_batch_X = jax.device_put(padded_logical_batch_X, sharding)
-
-            # shared_logical_batch_y = jax.device_put(padded_logical_batch_y, sharding)
-
-            # shared_masks = jax.make_array_from_process_local_data(sharding,masks)
-
-            # No longer necessary, I make it explicit
-
-            # padded_logical_batch_X = padded_logical_batch_X.reshape(
-            #     n_workers,worker_size, *padded_logical_batch_X.shape[1:]
-            # )
-
-            # padded_logical_batch_y = padded_logical_batch_y.reshape(
-            #     n_workers,worker_size, *padded_logical_batch_y.shape[1:]
-            # )
-
-            # masks = masks.reshape(
-            #     n_workers,worker_size, *masks.shape[1:]
-            # )
-
-            #print(f"Data  shape: {shared_logical_batch_X.shape}")
-            #print(f"Shard shape: {sharding.shard_shape(shared_logical_batch_X.shape)}")     
-
             # cast to GPU
             # Sharding must be different, the put must be to each device
             sharded_logical_batch_X = jax.device_put(padded_logical_batch_X,sharding)
             sharded_logical_batch_y = jax.device_put(padded_logical_batch_y,sharding)
             sharded_masks = jax.device_put(masks,sharding)
 
-            #Shard state
-
+            #Shard state - Replicate it to each device
             shard_state = jax.device_put(state,model_sharding)
             
-            # sharded_logical_batch_X = jax.device_put(padded_logical_batch_X)
-            # sharded_logical_batch_y = jax.device_put(padded_logical_batch_y)
-            # sharded_masks = jax.device_put(masks)
             print(f"Non sharded shape: {padded_logical_batch_X.shape}")
             
             print(f"Number of devices: {n_workers}")
-            print(f"Sharded shape: {sharded_logical_batch_X.addressable_shards[0].data.shape}")
-            print(f"Sharded shape: {sharded_logical_batch_y.addressable_shards[0].data.shape}")
-            print(f"Sharded shape: {sharded_masks.addressable_shards[0].data.shape}")
-
-            # padded_logical_batch_X = jax.device_put(
-            #     [x for x in padded_logical_batch_X], jax.devices()
-            # )
-            # padded_logical_batch_y = jax.device_put(
-            #     [x for x in padded_logical_batch_y], jax.devices()
-            # )
-            # masks = jax.device_put(
-            #     [x for x in masks], jax.devices()
-            # )
-
-            # n_physical_batches_replicated = jax.device_put_replicated(
-            #     n_physical_batches, 
-            #     jax.local_devices()
-            # )
-
-            # print('size padded logical batch X(should be n devices)',len(padded_logical_batch_X))
-            # print('size padded logical batch y(should be n devices)',len(padded_logical_batch_y))
-            # print('size mask (should be n devices)',len(masks))
+            print(f"Sharded shape X: {sharded_logical_batch_X.addressable_shards[0].data.shape}")
+            print(f"Sharded shape y: {sharded_logical_batch_y.addressable_shards[0].data.shape}")
+            print(f"Sharded shape masks: {sharded_masks.addressable_shards[0].data.shape}")
             print('size n_physical batches',n_physical_batches)
-            print('size n_physical batches per worker',worker_size)
+            #print('size n_physical batches per worker',worker_size)
 
             print("##### Starting gradient accumulation #####", flush=True)
+            
             ### gradient accumulation
-            params = state.params
-
+            params = shard_state.params
             accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
-            print('before acc -----\n -----',accumulated_clipped_grads0['classifier']['bias'].shape)
+            
+            #Measuring time
             start = time.time()
-
-                        
-            # accumulated_clipped_grads = jax.pmap(
-            #     get_acc_grads_logical_batch,
-            #     axis_name='devices',
-            #     devices=jax.devices(),
-            #     in_axes=(None, None,None,0,0,0)
-            # )(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
             accumulated_clipped_grads = jit_acc_fun(n_physical_batches,shard_state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
-            #accumulated_clipped_grads = get_acc_grads_logical_batch(n_physical_batches,state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
-
-            #accumulated_clipped_grads = jax.tree_map(lambda x: x[:x.shape[0] // jax.device_count()], accumulated_clipped_grads)
+            print('iteration',t,'\n:',type(accumulated_clipped_grads),'\n ------ \n',accumulated_clipped_grads)
 
             accumulated_clipped_grads = jax.device_put(accumulated_clipped_grads,jax.devices()[0])
-
-            #print(type(accumulated_clipped_grads))
-
-            #print('Is it actually summed? -----\n -----',accumulated_clipped_grads['classifier']['bias'].shape)
-
-            #print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][:100])
-
-            #print('check bias? -----\n -----',accumulated_clipped_grads['classifier']['bias'][100:])
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
@@ -350,8 +279,6 @@ def main(args):
 
             # update
             state = jax.block_until_ready(update_model(state, noisy_grad))
-
-            #print(state.params.device())
 
             end = time.time()
             duration = end - start
