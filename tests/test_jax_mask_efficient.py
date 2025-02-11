@@ -297,5 +297,27 @@ def test_update_model():
     assert jnp.allclose(updated_state_zero.params["w"], state.params["w"])
     assert jnp.allclose(updated_state_zero.params["b"], state.params["b"])
 
+
+def test_add_Gaussian_noise():
+    # this is not a very good test as it doesn't check if the added noise is Gaussian
+    accumulated = {"w": jnp.ones((2, 3)), "b": jnp.ones((4,))}
+    noise_std_values = [0.1, 1.0, 5.0]
+    C_values = [0.1, 1.0, 5.0]
+
+    for noise_std in noise_std_values:
+        for C in C_values:
+            # Use a fixed rng key and verify repeatability.
+            rng_key = jax.random.PRNGKey(0)
+            out1 = add_Gaussian_noise(rng_key, accumulated, noise_std, C)
+            out2 = add_Gaussian_noise(rng_key, accumulated, noise_std, C)
+            for key in accumulated.keys():
+                assert jnp.allclose(out1[key], out2[key])
+            # Using a different key should change the noise.
+            rng_key_diff = jax.random.PRNGKey(1)
+            out_diff = add_Gaussian_noise(rng_key_diff, accumulated, noise_std, C)
+            diff_found = any(not jnp.allclose(out1[key], out_diff[key]) for key in accumulated.keys())
+            assert diff_found, f"Noise did not change for noise_std {noise_std} and C {C}"
+
+
 if __name__ == "__main__":
     test_accumulate_physical_batch()
