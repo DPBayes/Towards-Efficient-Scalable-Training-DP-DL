@@ -25,6 +25,10 @@ from src.jax_mask_efficient import (
 
 
 def test_get_padded_logical_batch():
+    """
+    Test get_padded_logical_batch returns a batch with the correct shape and raises
+    a ValueError for invalid padded sizes (negative size and size larger than N).
+    """
     N = 200
     feature_dim = 32
     train_X = np.ones((N, feature_dim))
@@ -47,6 +51,10 @@ def test_get_padded_logical_batch():
 
 
 def test_poisson_sample_logical_batch_size():
+    """
+    Test poisson_sample_logical_batch_size returns the expected logical batch size given the sampling probability,
+    and that repeated sampling under the same conditions is consistent.
+    """
     rng = jax.random.key(42)
     n = 10000
     for q in [0.0, 1.0]:
@@ -60,6 +68,10 @@ def test_poisson_sample_logical_batch_size():
 
 
 def test_setup_physical_batches():
+    """
+    Test setup_physical_batches creates masks of the correct length and computes the correct number
+    of physical batches based on the logical batch size and physical batch size.
+    """
     logical_bs = 2501
 
     for p_bs in [-1, 0]:
@@ -110,6 +122,9 @@ def _setup_state():
 
 
 def test_compute_per_example_gradients_physical_batch():
+    """
+    Test that per-example gradients computed for a physical batch sum to the full gradient.
+    """
     state = _setup_state()
     n = 20
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
@@ -136,6 +151,9 @@ def test_compute_per_example_gradients_physical_batch():
 
 
 def test_clip_physical_batch():
+    """
+    Test that clip_physical_batch clips the per-example gradients to the target norm.
+    """
     state = _setup_state()
     n = 10
     LARGE_NUMBER = 1e3
@@ -162,6 +180,10 @@ def test_clip_physical_batch():
 
 
 def test_accumulate_physical_batch():
+    """
+    Test that accumulate_physical_batch correctly aggregates clipped per-example gradients
+    according to the provided mask.
+    """
     state = _setup_state()
     n = 10
     LARGE_NUMBER = 1e3
@@ -185,6 +207,9 @@ def test_accumulate_physical_batch():
 
 
 def test_compute_accuracy_for_batch():
+    """
+    Test compute_accuracy_for_batch returns the correct count of predictions.
+    """
     state = train_state.TrainState.create(
         apply_fn=lambda x, params: (x, None), params={}, tx=optax.sgd(learning_rate=0.1)
     )
@@ -209,7 +234,9 @@ def test_compute_accuracy_for_batch():
 
 
 def test_model_evaluation_combined():
-
+    """
+    Test model_evaluation returns the correct accuracy.
+    """
     orig_image_dimension = 2
     batch_size = 2
     n_images = 4
@@ -276,6 +303,10 @@ def test_model_evaluation_combined():
 
 
 def test_update_model():
+    """
+    Test update_model updates model parameters correctly using nonzero gradients
+    and remains unchanged for zero gradients.
+    """
     learning_rate = 0.1
     state = train_state.TrainState.create(
         apply_fn=lambda x, params: x,
@@ -395,7 +426,3 @@ def test_add_Gaussian_noise_independence():
     noise_b = out["b"] - accumulated["b"]
     corr = np.corrcoef(np.array(noise_a).flatten(), np.array(noise_b).flatten())[0, 1]
     assert abs(corr) < 0.2, f"Noise between leaves are not independent, correlation={corr}"
-
-
-if __name__ == "__main__":
-    test_accumulate_physical_batch()
