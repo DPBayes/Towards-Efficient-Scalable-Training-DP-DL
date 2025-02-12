@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
+import scipy.stats as stats
 from flax.training import train_state
 
 from src.jax_mask_efficient import (
@@ -19,6 +20,7 @@ from src.jax_mask_efficient import (
     poisson_sample_logical_batch_size,
     setup_physical_batches,
     update_model,
+    add_Gaussian_noise,
 )
 
 
@@ -299,7 +301,10 @@ def test_update_model():
 
 
 def test_add_Gaussian_noise():
-    # this is not a very good test as it doesn't check if the added noise is Gaussian
+    """
+    Test that add_Gaussian_noise produces repeatable noise for a fixed rng key
+    and varying noise for different keys.
+    """
     accumulated = {"w": jnp.ones((2, 3)), "b": jnp.ones((4,))}
     noise_std_values = [0.1, 1.0, 5.0]
     C_values = [0.1, 1.0, 5.0]
@@ -317,6 +322,79 @@ def test_add_Gaussian_noise():
             out_diff = add_Gaussian_noise(rng_key_diff, accumulated, noise_std, C)
             diff_found = any(not jnp.allclose(out1[key], out_diff[key]) for key in accumulated.keys())
             assert diff_found, f"Noise did not change for noise_std {noise_std} and C {C}"
+
+
+def test_add_Gaussian_noise_distribution():
+    """
+    Test that add_Gaussian_noise yields noise with a distribution having near-zero mean
+    and expected standard deviation.
+    """
+    accumulated = {"w": jnp.ones((2, 3)), "b": jnp.ones((4,))}
+    noise_std_values = [0.1, 1.0, 5.0]
+    C_values = [0.1, 1.0, 5.0]
+    num_samples = int(1e4)
+    tolerance = 0.01 
+
+    for noise_std in noise_std_values:
+        for C in C_values:
+            samples = []
+            base_key = jax.random.PRNGKey(42)
+            keys = jax.random.split(base_key, num_samples)
+            for key in keys:
+                out = add_Gaussian_noise(key, accumulated, noise_std, C)
+                for param in accumulated.keys():
+                    samples.append((out[param] - accumulated[param]).flatten())
+            samples = jnp.concat(samples)
+            expected_std = noise_std * C
+            sample_mean = jnp.mean(samples)
+            sample_std = jnp.std(samples)
+            assert (
+                jnp.abs(sample_mean) < tolerance * expected_std
+            ), f"Mean {sample_mean} too far from 0 for noise_std {noise_std} and C {C}"
+            assert (
+                jnp.abs(sample_std - expected_std) < tolerance * expected_std
+            ), f"Std {sample_std} deviates from expected {expected_std} for noise_std {noise_std} and C {C}"
+
+
+def test_add_Gaussian_noise_ks():
+    """
+    Test that the noise added by add_Gaussian_noise passes the Kolmogorov–Smirnov test
+    against a Gaussian distribution.
+    """
+    accumulated = {"w": jnp.ones((2, 3)), "b": jnp.ones((4,))}
+    noise_std_values = [0.1, 1.0, 5.0]
+    C_values = [0.1, 1.0, 5.0]
+    num_samples = int(1e4)
+
+    for noise_std in noise_std_values:
+        for C in C_values:
+            samples = []
+            base_key = jax.random.PRNGKey(42)
+            keys = jax.random.split(base_key, num_samples)
+            for key in keys:
+                out = add_Gaussian_noise(key, accumulated, noise_std, C)
+                for param in accumulated.keys():
+                    samples.append((out[param] - accumulated[param]).flatten())
+            samples = jnp.concat(samples)
+            expected_std = noise_std * C
+            stat, pvalue = stats.kstest(samples, cdf="norm", args=(0, expected_std))
+            assert pvalue > 0.05, f"KS test failed for noise_std {noise_std} and C {C}: p={pvalue}"
+
+
+def test_add_Gaussian_noise_independence():
+    """
+    Test that add_Gaussian_noise adds independent noise to different leaves by checking
+    that their correlation is near zero.
+    """
+    accumulated = {"a": jnp.ones((100,)), "b": jnp.ones((100,))}
+    noise_std = 2.0
+    C = 0.5
+    rng_key = jax.random.PRNGKey(123)
+    out = add_Gaussian_noise(rng_key, accumulated, noise_std, C)
+    noise_a = out["a"] - accumulated["a"]
+    noise_b = out["b"] - accumulated["b"]
+    corr = np.corrcoef(np.array(noise_a).flatten(), np.array(noise_b).flatten())[0, 1]
+    assert abs(corr) < 0.2, f"Noise between leaves are not independent, correlation={corr}"
 
 
 if __name__ == "__main__":
