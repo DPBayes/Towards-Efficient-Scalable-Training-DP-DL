@@ -125,8 +125,14 @@ def main(args):
             logical_batch_y,
             masks,
         ) = args
+
+        print(logical_batch_X.shape)
+        print(logical_batch_y.shape)
         # slice
         start_idx = t * physical_bs
+
+        print(start_idx)
+
         pb = jax.lax.dynamic_slice(
             logical_batch_X,
             (start_idx, 0, 0, 0, 0),
@@ -183,9 +189,8 @@ def main(args):
                 padded_logical_batch_X,
                 padded_logical_batch_y,
                 masks):
-            print(n_physical_batches)
             print(padded_logical_batch_X.shape)
-            print(padded_logical_batch_y.shape,padded_logical_batch_y[:5])
+            print(padded_logical_batch_y.shape)
 
             _, accumulated_clipped_grads, *_ = jax.lax.fori_loop(
                 0,
@@ -278,17 +283,26 @@ def main(args):
 
             accumulated_clipped_grads = jit_acc_fun(n_physical_batches_worker,shard_state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
-            print('iteration',t,'\n:',type(accumulated_clipped_grads),'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
+            print('iteration:',t,'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
 
             #Get them in only one device and apply noise
             accumulated_clipped_grads = jax.device_put(accumulated_clipped_grads,jax.devices()[0])
+
+            print('after device put iteration:',t,'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
+
 
             noisy_grad = add_Gaussian_noise(
                 noise_rng, accumulated_clipped_grads, noise_std, C
             )
 
+            print('after noise iteration:',t,'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
+
+
             # update the original state
             state = jax.block_until_ready(update_model(state, noisy_grad))
+
+            print('after update iteration:',t,'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
+
 
             end = time.time()
             duration = end - start
