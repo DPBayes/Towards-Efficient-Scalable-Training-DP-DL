@@ -222,7 +222,7 @@ def main(args):
             # and create appropriate masks to mask out unnessary elements later
             # since the distributed case needs to divide the logical batch in the number
             # of devices, we need to pad even more
-            masks, n_physical_batches, worker_size = setup_physical_batches_distributed(
+            masks, n_physical_batches, worker_size,n_physical_batches_worker = setup_physical_batches_distributed(
                 actual_logical_batch_size=actual_batch_size,
                 physical_bs=physical_bs,
                 world_size=n_workers
@@ -267,7 +267,7 @@ def main(args):
             #Measuring time
             start = time.time()
 
-            accumulated_clipped_grads = jit_acc_fun(n_physical_batches,shard_state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
+            accumulated_clipped_grads = jit_acc_fun(n_physical_batches_worker,shard_state,accumulated_clipped_grads0,sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
 
             print('iteration',t,'\n:',type(accumulated_clipped_grads),'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
 

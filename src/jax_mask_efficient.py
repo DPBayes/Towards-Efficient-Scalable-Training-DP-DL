@@ -137,13 +137,15 @@ def setup_physical_batches_distributed(
 
     worker_batch_size = padded_logical_batch_size // world_size
 
+    n_physical_batches_worker = worker_batch_size // physical_bs
+
     print(worker_batch_size)
     print( worker_batch_size % physical_bs)
     print(physical_bs)
 
     assert worker_batch_size % physical_bs == 0
 
-    return masks, n_physical_batches,worker_batch_size
+    return masks, n_physical_batches,worker_batch_size,n_physical_batches_worker
 
 @jax.jit
 def per_example_and_clipping(
