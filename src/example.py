@@ -201,10 +201,11 @@ def main(args):
                 ),
             )
 
-            global_sum_of_clipped_grads = jax.tree_util.tree_map(
-                lambda x: jax.lax.psum(x, axis_name='devices'), 
-                accumulated_clipped_grads
-            )
+            # global_sum_of_clipped_grads = jax.tree_util.tree_map(
+            #     lambda x: jax.lax.psum(x, axis_name='devices'), 
+            #     accumulated_clipped_grads
+            # )
+            global_sum_of_clipped_grads = jax.lax.psum(accumulated_clipped_grads, axis_name='devices')
 
             return global_sum_of_clipped_grads
 
