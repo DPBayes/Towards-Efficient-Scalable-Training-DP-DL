@@ -80,6 +80,18 @@ def _parse_arguments(args, dataset_size):
         resized_image_dimension,
     )
 
+def verify_data_distribution(logical_batch_X, logical_batch_y, masks):
+    # Print shape and sample data from each device
+    print(f"Input shape: {logical_batch_X.shape}")
+    print(f"Number of devices: {len(jax.devices())}")
+    
+    # Print first few elements from each device's partition
+    for i, d in enumerate(jax.devices()):
+        x_slice = jax.device_get(logical_batch_X[i])
+        y_slice = jax.device_get(logical_batch_y[i])
+        print(f"\nDevice {i}:")
+        print(f"X first elements: {x_slice[:5]}")
+        print(f"y first elements: {y_slice[:5]}")
 
 def main(args):
     
@@ -263,7 +275,7 @@ def main(args):
             ### gradient accumulation
             params = shard_state.params
             accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
-            
+            verify_data_distribution(sharded_logical_batch_X,sharded_logical_batch_y,sharded_masks)
             #Measuring time
             start = time.time()
 
