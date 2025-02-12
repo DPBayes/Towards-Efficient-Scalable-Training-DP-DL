@@ -126,12 +126,8 @@ def main(args):
             masks,
         ) = args
 
-        print(logical_batch_X.shape)
-        print(logical_batch_y.shape)
         # slice
         start_idx = t * physical_bs
-
-        print(start_idx)
 
         pb = jax.lax.dynamic_slice(
             logical_batch_X,
@@ -263,7 +259,6 @@ def main(args):
             print(f"Sharded shape y: {sharded_logical_batch_y.addressable_shards[0].data.shape}")
             print(f"Sharded shape masks: {sharded_masks.addressable_shards[0].data.shape}")
             print('size n_physical batches',n_physical_batches)
-            #print('size n_physical batches per worker',worker_size)
 
             print("##### Starting gradient accumulation #####", flush=True)
             
@@ -271,13 +266,10 @@ def main(args):
             params = shard_state.params
             accumulated_clipped_grads0 = jax.tree.map(lambda x: 0.0 * x, params)
             
-
             print('X',sharded_logical_batch_X.sharding.addressable_devices_indices_map(sharded_logical_batch_X.shape),flush=True)
 
             print('y',sharded_logical_batch_y.sharding.addressable_devices_indices_map(sharded_logical_batch_y.shape),flush=True)
 
-            print('masks',sharded_masks.sharding.addressable_devices_indices_map(masks.shape),flush=True)
-            
             #Measuring time
             start = time.time()
 
@@ -295,14 +287,12 @@ def main(args):
                 noise_rng, accumulated_clipped_grads, noise_std, C
             )
 
-            print('after noise iteration:',t,'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
-
+            print('after noise iteration:',t,'\n ------ \n',noisy_grad['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
 
             # update the original state
             state = jax.block_until_ready(update_model(state, noisy_grad))
 
-            print('after update iteration:',t,'\n ------ \n',accumulated_clipped_grads['classifier']['bias'],'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
-
+            print('after update iteration:',t,'\n------------State----------\n',state.params['classifier']['bias'],'\nsharded_state\n',shard_state.params['classifier']['bias'])
 
             end = time.time()
             duration = end - start
