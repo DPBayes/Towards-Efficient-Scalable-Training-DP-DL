@@ -34,7 +34,7 @@ def poisson_sample_logical_batch_size(binomial_rng: jax.Array, dataset_size: int
         The sampled logical batch size.
     """
     logical_batch_size = jax.device_put(
-        jax.random.bernoulli(binomial_rng, shape=(dataset_size,), p=q).sum(),
+        jax.random.binomial(binomial_rng, n=dataset_size, p=q),
         jax.devices("cpu")[0],
     )
     return logical_batch_size
