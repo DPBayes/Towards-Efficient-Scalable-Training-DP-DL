@@ -343,19 +343,50 @@ def compute_accuracy_for_batch(
 
     return correct
 
+@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension"])
+def test_body_fun(t, params, test_batch_size, orig_image_dimension):
+    (state, accumulated_corrects, test_X, test_y) = params
+    # slice
+    start_idx = t * test_batch_size
+    pb = jax.lax.dynamic_slice(
+        test_X,
+        (start_idx, 0, 0, 0),
+        (test_batch_size, 3, orig_image_dimension, orig_image_dimension),
+    )
+    yb = jax.lax.dynamic_slice(test_y, (start_idx,), (test_batch_size,))
+
+    n_corrects = compute_accuracy_for_batch(state, pb, yb)
+
+    accumulated_corrects += n_corrects
+
+    return (state, accumulated_corrects, test_X, test_y)
+
 
 def model_evaluation(
-    state: train_state.TrainState, test_data: jax.typing.ArrayLike, test_labels: jax.typing.ArrayLike
+    state: train_state.TrainState,
+    test_images: jax.typing.ArrayLike,
+    test_labels: jax.typing.ArrayLike,
+    orig_image_dimension: int,
+    batch_size: int = 50,
+    use_gpu=True,
 ):
 
-    corr = 0 
-    total = 0
+    accumulated_corrects = 0
+    n_test_batches = len(test_images) // batch_size
 
-    for pb, yb in zip(test_data, test_labels):
-        pb = jax.device_put(pb, jax.devices("gpu")[0])
-        yb = jax.device_put(yb, jax.devices("gpu")[0])
-        # TODO: This won't be correct when len(pb) not the same for all pb in test_data.
-        corr += compute_accuracy_for_batch(state, pb, yb)
-        total += len(yb)
+    test_images = test_images.reshape(-1, 3, orig_image_dimension, orig_image_dimension)
 
-    return corr / total
+    if use_gpu:
+        test_images = jax.device_put(test_images, jax.devices("gpu")[0])
+        test_labels = jax.device_put(test_labels, jax.devices("gpu")[0])
+
+    _, accumulated_corrects, *_ = jax.lax.fori_loop(
+        0,
+        n_test_batches,
+        lambda t, params: test_body_fun(
+            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension
+        ),
+        (state, accumulated_corrects, test_images, test_labels),
+    )
+
+    return accumulated_corrects / (n_test_batches * batch_size)
