@@ -1,6 +1,7 @@
 import math
 
 import flax.linen as nn
+import ipdb
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -20,7 +21,6 @@ from src.jax_mask_efficient import (
     poisson_sample_logical_batch_size,
     setup_physical_batches,
     update_model,
-    add_Gaussian_noise,
 )
 
 
@@ -65,6 +65,37 @@ def test_poisson_sample_logical_batch_size():
         samples.append(poisson_sample_logical_batch_size(binomial_rng=rng, dataset_size=n, q=0.5))
 
     assert all([s == samples[0] for s in samples])
+
+
+def test_poisson_sample_logical_batch_size_chisquare():
+    """
+    Verifies that samples from poisson_sample_logical_batch_size follow the expected binomial
+    distribution using a chi-square goodness-of-fit test.
+    """
+    dataset_size = int(1e4)
+    num_samples = int(1e5)
+
+    for q in [0.1, 0.45, 0.9]:
+        base_key = jax.random.PRNGKey(999)
+        keys = jax.random.split(base_key, num_samples)
+
+        # draw samples and bin them into dataset_size bins
+        samples = jax.vmap(lambda rng_key: poisson_sample_logical_batch_size(rng_key, dataset_size, q))(keys)
+        bins = np.arange(-0.5, dataset_size + 1, 1)
+        observed, _ = np.histogram(samples, bins=bins)
+
+        # compute the expected numbers of samples in each bin
+        expected = np.zeros(len(bins) - 1)
+        for i in range(len(bins) - 1):
+            mass_within_bin = stats.binom.cdf(bins[i + 1], dataset_size, q) - stats.binom.cdf(bins[i], dataset_size, q)
+            expected[i] = num_samples * mass_within_bin
+
+        # We need to ignore bins with expected < 5 for the chi-square test because scipy notes say this is necessary
+        mask = expected >= 5
+
+        # The sum_check=False is necessary because the tolarence is tiny and cannot be changed
+        chi2_stat, pvalue = stats.chisquare(observed[mask], f_exp=expected[mask], sum_check=False)
+        assert pvalue > 0.05, f"Chi-square test failed q:{q}, chi2_stat={chi2_stat}, pvalue={pvalue}"
 
 
 def test_setup_physical_batches():
@@ -364,7 +395,7 @@ def test_add_Gaussian_noise_distribution():
     noise_std_values = [0.1, 1.0, 5.0]
     C_values = [0.1, 1.0, 5.0]
     num_samples = int(1e4)
-    tolerance = 0.01 
+    tolerance = 0.01
 
     for noise_std in noise_std_values:
         for C in C_values:
@@ -426,3 +457,7 @@ def test_add_Gaussian_noise_independence():
     noise_b = out["b"] - accumulated["b"]
     corr = np.corrcoef(np.array(noise_a).flatten(), np.array(noise_b).flatten())[0, 1]
     assert abs(corr) < 0.2, f"Noise between leaves are not independent, correlation={corr}"
+
+
+if __name__ == "__main__":
+    test_poisson_sample_logical_batch_size_chisquare()
