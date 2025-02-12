@@ -78,7 +78,3 @@ def test_load_from_huggingface_cifar10_and_svhn():
     for arr in [svhn_train, svhn_train_labels, svhn_test, svhn_test_labels]:
         for device in arr.devices():
             assert device.device_kind == "cpu"
-
-
-if __name__ == "__main__":
-    test_load_from_huggingface_cifar10_and_svhn()
