@@ -225,7 +225,9 @@ def clip_physical_batch(px_grads: jax.typing.ArrayLike, C: float):
 
     clipping_multiplier = jnp.minimum(1.0, C / px_grad_norms)
 
-    clipped_px_grads = jax.tree.map(lambda x: clipping_multiplier.reshape((-1,) + (1,) * (x.ndim - 1)) * x, px_grads)
+    clipped_px_grads = jax.tree.map(
+        lambda x: jax.vmap(lambda y, z: y * z, in_axes=(0, 0))(clipping_multiplier, x), px_grads
+    )
 
     return clipped_px_grads
 
@@ -248,7 +250,16 @@ def accumulate_physical_batch(clipped_px_grads: jax.typing.ArrayLike, mask: jax.
         The clipped and accumulated per-example gradients after discarding the additional per-example gradients.
     """
 
-    return jax.tree.map(lambda x: jnp.sum(mask.reshape((-1,) + (1,) * (x.ndim - 1)) * x, axis=0), clipped_px_grads)
+    return jax.tree.map(
+        lambda x: jnp.sum(
+            jax.vmap(
+                lambda y, z: y * z,
+                in_axes=(0, 0),
+            )(mask, x),
+            axis=0,
+        ),
+        clipped_px_grads,
+    )
 
 
 @jax.jit
