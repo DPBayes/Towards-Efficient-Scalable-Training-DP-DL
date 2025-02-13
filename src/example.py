@@ -82,11 +82,17 @@ def _parse_arguments(args, dataset_size):
 
 def main(args):
     
-    print('Distributed Jax devices: \n',jax.device_count(),jax.devices())
+    jax.clear_caches()
+
+    n_workers = jax.device_count()
+
+    distributed = n_workers > 1 
+    if distributed:
+        print('Distributed Jax devices: \n',jax.device_count(),jax.devices())
 
     print(args, flush=True)
 
-    train_images, train_labels, test_images, test_labels = load_from_huggingface("cifar100", cache_dir=None)
+    train_images, train_labels, test_images, test_labels = load_from_huggingface("cifar100", cache_dir=None, label_name='fine_label')
 
     (
         num_steps,
@@ -108,13 +114,15 @@ def main(args):
         optimizer_config=optimizer_config,
     )
 
+    # Move channel axis from position 3 to position 1
+    train_images = jnp.moveaxis(train_images, source=3, destination=1)
+    test_images = jnp.moveaxis(test_images, source=3, destination=1)
+
     times = []
     logical_batch_sizes = []
 
-    splits_test = jnp.split(test_images, 10)
-    splits_labels = jnp.split(test_labels, 10)
-
-    n_workers = jax.device_count()
+    #splits_test = jnp.split(test_images, 10)
+    #splits_labels = jnp.split(test_labels, 10)
 
     @jax.jit
     def body_fun(t, args):
@@ -155,10 +163,10 @@ def main(args):
             logical_batch_y,
             masks,
         )
-    
-    distributed = True if n_workers > 1 else False
 
     if distributed:
+
+        print('Distributed case')
 
         # Parallelization
 
@@ -303,7 +311,7 @@ def main(args):
 
             print('thr',actual_batch_size / duration, flush=True)
 
-            acc_iter = model_evaluation(state, splits_test, splits_labels)
+            acc_iter = model_evaluation(state, test_images, test_labels, orig_image_dimension)
             print("iteration", t, "acc", acc_iter, flush=True)
 
             # Compute privacy guarantees
@@ -319,6 +327,8 @@ def main(args):
     else:    
 
     # Iteration loop (logical batch size)
+
+        print('Non-Distributed Training')
 
         for t in range(num_steps):
             
@@ -395,7 +405,7 @@ def main(args):
 
             print(actual_batch_size / duration, flush=True)
 
-            acc_iter = model_evaluation(state, splits_test, splits_labels)
+            acc_iter = model_evaluation(state, test_images, test_labels, orig_image_dimension)
             print("iteration", t, "acc", acc_iter, flush=True)
 
             # Compute privacy guarantees
@@ -408,7 +418,7 @@ def main(args):
             privacy_results = {"eps_rdp": epsilon, "delta_rdp": delta}
             print(privacy_results, flush=True)
 
-    acc_last = model_evaluation(state, splits_test, splits_labels)
+    acc_last = model_evaluation(state, test_images, test_labels, orig_image_dimension)
 
     print("times \n", times, flush=True)
 
@@ -417,3 +427,4 @@ def main(args):
     print("accuracy at end of training", acc_last, flush=True)
     thr = np.mean(np.array(logical_batch_sizes) / np.array(times))
     return thr, acc_last
+
