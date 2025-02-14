@@ -164,44 +164,6 @@ def compute_per_example_gradients_physical_batch(
 
 
 @jax.jit
-def clip_and_accumulate_physical_batch(px_grads: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, C: float):
-    """Clip and accumulate per-example gradients of a physical batch.
-
-    Parameters
-    ----------
-    px_grads : jax.typing.ArrayLike
-        The per-sample gradients of the physical batch.
-    mask : jax.typing.ArrayLike
-        A mask to filter out gradients that are discarded as a small number of per-examples gradients
-        is only computed to keep the physical batch size fixed.
-    C : float
-        The clipping norm of DP-SGD.
-
-    Returns
-    -------
-    acc_px_grads: jax.typing.ArrayLike
-        The clipped and accumulated per-example gradients after discarding the additional per-example gradients.
-    """
-
-    def _clip_mask_and_sum(x: jax.typing.ArrayLike, mask: jax.typing.ArrayLike, clipping_multiplier: float):
-
-        new_shape = (-1,) + (1,) * (x.ndim - 1)
-        mask = mask.reshape(new_shape)
-        clipping_multiplier = clipping_multiplier.reshape(new_shape)
-
-        return jnp.sum(x * mask * clipping_multiplier, axis=0)
-
-    px_per_param_sq_norms = jax.tree.map(lambda x: jnp.linalg.norm(x.reshape(x.shape[0], -1), axis=-1) ** 2, px_grads)
-    flattened_px_per_param_sq_norms, tree_def = jax.tree_util.tree_flatten(px_per_param_sq_norms)
-
-    px_grad_norms = jnp.sqrt(jnp.sum(jnp.array(flattened_px_per_param_sq_norms), axis=0))
-
-    clipping_multiplier = jnp.minimum(1.0, C / px_grad_norms)
-
-    return jax.tree.map(lambda x: _clip_mask_and_sum(x, mask, clipping_multiplier), px_grads)
-
-
-@jax.jit
 def clip_physical_batch(px_grads: jax.typing.ArrayLike, C: float):
     """Clip per-example gradients of a physical batch.
 
@@ -318,7 +280,9 @@ def compute_accuracy_for_batch(
         return 0
 
     resized_X = resizer(batch_X)
-    logits = state.apply_fn(resized_X, state.params)[0]
+    logits = state.apply_fn(resized_X, state.params)
+    if type(logits) is tuple:
+        logits = logits[0]
     predicted_class = jnp.argmax(logits, axis=-1)
 
     correct = jnp.sum(predicted_class == batch_y)
@@ -357,7 +321,6 @@ def model_evaluation(
     accumulated_corrects = 0
     n_test_batches = len(test_images) // batch_size
 
-    test_images = test_images.reshape(-1, 3, orig_image_dimension, orig_image_dimension)
 
     if use_gpu:
         test_images = jax.device_put(test_images, jax.devices("gpu")[0])
