@@ -386,38 +386,6 @@ def test_add_Gaussian_noise():
             assert diff_found, f"Noise did not change for noise_std {noise_std} and C {C}"
 
 
-def test_add_Gaussian_noise_distribution():
-    """
-    Test that add_Gaussian_noise yields noise with a distribution having near-zero mean
-    and expected standard deviation.
-    """
-    accumulated = {"w": jnp.ones((2, 3)), "b": jnp.ones((4,))}
-    noise_std_values = [0.1, 1.0, 5.0]
-    C_values = [0.1, 1.0, 5.0]
-    num_samples = int(1e4)
-    tolerance = 0.01
-
-    for noise_std in noise_std_values:
-        for C in C_values:
-            samples = []
-            base_key = jax.random.PRNGKey(42)
-            keys = jax.random.split(base_key, num_samples)
-            for key in keys:
-                out = add_Gaussian_noise(key, accumulated, noise_std, C)
-                for param in accumulated.keys():
-                    samples.append((out[param] - accumulated[param]).flatten())
-            samples = jnp.concat(samples)
-            expected_std = noise_std * C
-            sample_mean = jnp.mean(samples)
-            sample_std = jnp.std(samples)
-            assert (
-                jnp.abs(sample_mean) < tolerance * expected_std
-            ), f"Mean {sample_mean} too far from 0 for noise_std {noise_std} and C {C}"
-            assert (
-                jnp.abs(sample_std - expected_std) < tolerance * expected_std
-            ), f"Std {sample_std} deviates from expected {expected_std} for noise_std {noise_std} and C {C}"
-
-
 def test_add_Gaussian_noise_ks():
     """
     Test that the noise added by add_Gaussian_noise passes the Kolmogorov–Smirnov test
