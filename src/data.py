@@ -1,11 +1,13 @@
 import jax
 from datasets import load_dataset
 
+
 def normalize_and_reshape(imgs):
     normalized = ((imgs / 255.0) - 0.5) / 0.5
     return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
 
-def load_from_huggingface(dataset_name : str, cache_dir : str):
+
+def load_from_huggingface(dataset_name: str, cache_dir: str, feature_name="img", label_name="label"):
     """Load a dataset from huggingface.
 
     Parameters
@@ -29,13 +31,13 @@ def load_from_huggingface(dataset_name : str, cache_dir : str):
     ds = load_dataset(dataset_name, cache_dir=cache_dir)
     ds = ds.with_format("jax")
 
-    train_images = ds["train"]["image"]
-    train_labels = ds["train"]["label"]
+    train_images = ds["train"][feature_name]
+    train_labels = ds["train"][label_name]
     train_images = jax.device_put(train_images, device=jax.devices("cpu")[0])
     train_labels = jax.device_put(train_labels, device=jax.devices("cpu")[0])
 
-    test_images = ds["test"]["image"]
-    test_labels = ds["test"]["label"]
+    test_images = ds["test"][feature_name]
+    test_labels = ds["test"][label_name]
     test_images = jax.device_put(test_images, device=jax.devices("cpu")[0])
     test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
     return train_images, train_labels, test_images, test_labels

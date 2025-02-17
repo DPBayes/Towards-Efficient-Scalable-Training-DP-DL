@@ -1,34 +1,76 @@
-import warnings
-import jax.numpy as jnp
-
 from dp_accounting import rdp, pld, mechanism_calibration
 from dp_accounting.dp_event import (
     PoissonSampledDpEvent,
     GaussianDpEvent,
     SelfComposedDpEvent,
 )
-from dp_accounting.pld.accountant import get_smallest_subsampled_gaussian_noise
-from dp_accounting.pld.common import DifferentialPrivacyParameters
+
+
+def _check_params(sample_rate: float, steps: int, target_delta: float):
+    """
+    Raise ValueError if parameters are misspecified, e.g. negative steps.
+    """
+    if sample_rate < 0 or sample_rate > 1:
+        raise ValueError("sample_rate parameter needs to be 0 <= and <= 1.")
+
+    if target_delta < 0 or target_delta > 1:
+        raise ValueError("target_delta parameter needs to be 0 <= and <= 1.")
+
+    if steps < 1 and type(steps) == int:
+        raise ValueError("steps parameter must be >= 1.")
 
 
 def calculate_noise(
     sample_rate: float,
+    steps: int,
     target_epsilon: float,
     target_delta: float,
-    steps: int,
-    accountant: str,
+    accountant: str = "pld",
 ):
+    """
+    Computes the required Gaussian noise standard deviation for DP-SGD
+    given the relevant hyperparameters of DP-SGD. Note that my default
+    the PLD accountant is used.
 
-    dp_event = lambda sigma: SelfComposedDpEvent(
-        PoissonSampledDpEvent(sample_rate, GaussianDpEvent(sigma)), steps
-    )
+    Parameters
+    ----------
+    sample_rate : float
+        The sampling rate for Poisson subsampling. Note that 0 <= sampling_rate <= 1.
+    steps : int
+        The number of steps that should be accounted for in total during training.
+    target_epsilon : float
+        The desired epsilon at `target_delta` that should be reached after taking all steps.
+    target_delta : float
+        The target delta of the DP-SGD run.
+    accountant : str, optional
+        The privacy accountant, can be "pld" or "rdp, by default "pld".
 
+    Returns
+    -------
+    noise_multiplier : float
+        The required Gaussian noise standard deviation for DP-SGD.
+
+    Raises
+    ------
+    ValueError
+        Raise if parameters are misspecified, e.g. negative target_epsilon.
+    """
+
+    # check those params that are common to many dp accounting methods
+    _check_params(sample_rate=sample_rate, steps=steps, target_delta=target_delta)
+
+    if target_epsilon < 0:
+        raise ValueError("target_epsilon parameter needs to be positive.")
+    
+    # check and select accountant class
     if accountant == "pld":
         accountant = pld.PLDAccountant
     elif accountant == "rdp":
         accountant = rdp.RdpAccountant
     else:
-        raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'")
+        raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'.")
+
+    dp_event = lambda sigma: SelfComposedDpEvent(PoissonSampledDpEvent(sample_rate, GaussianDpEvent(sigma)), steps)
 
     noise_multiplier = mechanism_calibration.calibrate_dp_mechanism(
         accountant,
@@ -40,17 +82,56 @@ def calculate_noise(
 
 
 def compute_epsilon(
+    noise_multiplier: float,
+    sample_rate: float,
     steps: int,
-    sample_rate: int,
     target_delta: float = 1e-5,
-    noise_multiplier: float = 0.1,
+    accountant: str = "pld",
 ):
+    """
+    Computes spent privacy budget in terms of (epsilon, delta)-DP given the specified
+    DP-SGD hyperparameters using the specified accountant which is by default PLD.
 
-    print("steps", steps, flush=True)
+    Parameters
+    ----------
+    noise_multiplier : float
+        The added Gaussian noise standard deviation.
+    sample_rate : float
+        The sampling rate for Poisson subsampling. Note that 0 <= sampling_rate <= 1.
+    steps : int
+        The number of steps that should be accounted for in total during training.
+    target_delta : float, optional
+        The target delta at which to compute epsilon, by default 1e-5.
+    accountant : str, optional
+        The privacy accountant, can be "pld" or "rdp, by default "pld".
 
-    print("noise multiplier", noise_multiplier, flush=True)
+    Returns
+    -------
+    epsilon : float
+        The epsilon parameter of the spent (epsilon, delta)-DP privacy budget.
+    delta : float
+        The delta parameter of the spent (epsilon, delta)-DP privacy budget.
 
-    accountant = rdp.RdpAccountant()  # type: ignore
+    Raises
+    ------
+    ValueError
+        Raise if parameters are misspecified, e.g. negative steps.
+    """
+
+    # check those params that are common to many dp accounting methods
+    _check_params(sample_rate=sample_rate, steps=steps, target_delta=target_delta)
+
+    if noise_multiplier < 0:
+        raise ValueError("noise parameter needs to be positive.")
+
+    # check and setup accountant
+    if accountant == "pld":
+        accountant = pld.PLDAccountant()
+    elif accountant == "rdp":
+        accountant = rdp.RdpAccountant()
+    else:
+        raise ValueError("accountant parameter needs to be either 'pld' or 'rdp'.")
+
     accountant.compose(
         PoissonSampledDpEvent(sample_rate, GaussianDpEvent(noise_multiplier)),
         steps,
