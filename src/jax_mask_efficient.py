@@ -117,6 +117,37 @@ def setup_physical_batches(
 
     return masks, n_physical_batches
 
+def setup_physical_batches_distributed(
+        actual_logical_batch_size: int,
+        physical_bs: int,
+        world_size: int
+):
+    """
+    Same as the previous method, but fixed for the distributed case.
+    In this case, the logical batch must be divided into the number of workers
+    But we must ensure that the worker size is divisible by the physical size, such that
+    we ensure the use of the masking.
+    """
+    if physical_bs < 1:
+        raise ValueError(f"physical_bs needs to be positive but it is {physical_bs}")
+
+    lcm = math.lcm(world_size*physical_bs,physical_bs)
+    padded_logical_batch_size = math.ceil(actual_logical_batch_size/lcm) * lcm
+    n_physical_batches = padded_logical_batch_size // physical_bs
+    
+    # masks (throw away n_masked_elements later as they are only required for computing)
+    n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
+    masks = jax.device_put(
+        jnp.concatenate([jnp.ones(actual_logical_batch_size), jnp.zeros(n_masked_elements)]),
+        jax.devices("cpu")[0],
+    )
+
+    worker_batch_size = padded_logical_batch_size // world_size
+
+    n_physical_batches_worker = worker_batch_size // physical_bs
+
+    return masks, n_physical_batches, worker_batch_size, n_physical_batches_worker
+
 
 @partial(jax.jit, static_argnums=(3,))
 def compute_per_example_gradients_physical_batch(
