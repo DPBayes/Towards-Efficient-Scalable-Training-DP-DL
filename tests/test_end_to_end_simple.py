@@ -27,8 +27,7 @@ os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90"
 os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 jax.clear_caches()
 
-USE_GPU = False
-
+USE_GPU = jax.device_count('gpu') > 0
 
 def test_simple_end_to_end_non_DP():
     lr = 1e-3
@@ -204,3 +203,4 @@ def test_simple_end_to_end():
     assert epsilon <= target_epsilon
     assert acc_last > 0.8
     assert delta <= target_delta
+

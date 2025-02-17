@@ -321,11 +321,11 @@ def model_evaluation(
     accumulated_corrects = 0
     n_test_batches = len(test_images) // batch_size
 
-
     if use_gpu:
         test_images = jax.device_put(test_images, jax.devices("gpu")[0])
         test_labels = jax.device_put(test_labels, jax.devices("gpu")[0])
-
+        state = jax.device_put(state, jax.devices("gpu")[0])
+    
     _, accumulated_corrects, *_ = jax.lax.fori_loop(
         0,
         n_test_batches,
