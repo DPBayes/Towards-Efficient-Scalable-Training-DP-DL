@@ -21,6 +21,7 @@ from src.jax_mask_efficient import (
     poisson_sample_logical_batch_size,
     setup_physical_batches,
     update_model,
+    setup_physical_batches_distributed
 )
 
 
@@ -122,6 +123,24 @@ def test_setup_physical_batches():
     assert sum(masks) == logical_bs
     assert len(masks) == logical_bs + 1
     assert n_physical_batches == 1
+
+def test_setup_physical_batches_distributed():
+    """
+    Test setup_physical_batches creates masks of the correct length and computes the correct number
+    of physical batches based on the logical batch size and physical batch size.
+    """
+    logical_bs = 2501
+    n_devices = 4
+
+    for p_bs in [-1, 0]:
+        with pytest.raises(ValueError):
+            setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs)
+
+    for p_bs in [1,32, logical_bs - 1, logical_bs]:
+        masks, n_physical_batches, worker_batch_size, n_physical_batches_worker = setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=n_devices)
+        assert sum(masks) == logical_bs
+        assert len(masks) % p_bs == 0
+        assert worker_batch_size % p_bs == 0
 
 
 def _setup_state():

@@ -41,3 +41,26 @@ def load_from_huggingface(dataset_name: str, cache_dir: str, feature_name="img",
     test_images = jax.device_put(test_images, device=jax.devices("cpu")[0])
     test_labels = jax.device_put(test_labels, device=jax.devices("cpu")[0])
     return train_images, train_labels, test_images, test_labels
+
+def prepare_sharding():
+    """ Prepare the JAX sharding objects to distribute the data and the model.
+
+    Returns
+    -------
+    mesh:   jax.sharding.Mesh
+        Describes how the devices are arranged. It is returned since it is necessary
+        for the main sharding map.
+    data_shard:  jax.sharding.NamedSharding
+        A named sharding object, describes how to shard the data across devices.
+        Data will be sharded without the need of explicitly dividing it. It will 
+        shard over the first dimension.
+    model_shard:  jax.sharding.NamedSharding
+        A named sharding object, describes how to shard the model across devices
+        The model will be replicated on each device. So far we don't have a feature 
+        of sharding parts of the model. To shard across devices, the PartitionSpec
+        object must have an axis. If it is empty, it will replicate over the mesh.
+    """
+    mesh = jax.sharding.Mesh(jax.devices(),'devices')
+    data_shard = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec('devices'))
+    model_shard = jax.sharding.NamedSharding(mesh,jax.sharding.PartitionSpec())
+    return mesh,data_shard, model_shard
