@@ -136,9 +136,10 @@ def setup_physical_batches_distributed(
     n_physical_batches = padded_logical_batch_size // physical_bs
     
     # masks (throw away n_masked_elements later as they are only required for computing)
-    n_masked_elements = padded_logical_batch_size - actual_logical_batch_size
+    n_masked_elements = int(padded_logical_batch_size - actual_logical_batch_size)
+
     masks = jax.device_put(
-        jnp.concatenate([jnp.ones(actual_logical_batch_size), jnp.zeros(n_masked_elements)]),
+        jnp.concatenate([jnp.ones(int(actual_logical_batch_size)), jnp.zeros(n_masked_elements)]),
         jax.devices("cpu")[0],
     )
 
