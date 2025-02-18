@@ -130,6 +130,8 @@ def setup_physical_batches_distributed(
     """
     if physical_bs < 1:
         raise ValueError(f"physical_bs needs to be positive but it is {physical_bs}")
+    if world_size < 1:
+        raise ValueError(f"the world size must be a positive value, but it is {world_size}")
 
     lcm = math.lcm(world_size*physical_bs,physical_bs)
     padded_logical_batch_size = math.ceil(actual_logical_batch_size/lcm) * lcm

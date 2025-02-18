@@ -135,8 +135,25 @@ def test_setup_physical_batches_distributed():
     for p_bs in [-1, 0]:
         with pytest.raises(ValueError):
             setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=n_devices)
+
+    for p_b in [-1, 0]:
+        with pytest.raises(ValueError):
+            setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=p_b)
             
     for p_bs in [1,32, logical_bs - 1, logical_bs]:
+        masks, n_physical_batches, worker_batch_size, n_physical_batches_worker = setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=n_devices)
+        assert sum(masks) == logical_bs
+        assert len(masks) % p_bs == 0
+        assert worker_batch_size % p_bs == 0
+    
+    p_bs = 32
+    masks, n_physical_batches = setup_physical_batches(actual_logical_batch_size=logical_bs, physical_bs=p_bs)
+    masks_d, n_physical_batches_d, worker_batch_size, n_physical_batches_worker = setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=1)
+
+    assert n_physical_batches_d == n_physical_batches
+    assert len(masks) == len(masks_d)
+
+    for n_devices in [1,2,16]:
         masks, n_physical_batches, worker_batch_size, n_physical_batches_worker = setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=n_devices)
         assert sum(masks) == logical_bs
         assert len(masks) % p_bs == 0
