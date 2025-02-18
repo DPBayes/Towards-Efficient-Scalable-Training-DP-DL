@@ -134,8 +134,8 @@ def test_setup_physical_batches_distributed():
 
     for p_bs in [-1, 0]:
         with pytest.raises(ValueError):
-            setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs)
-
+            setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=n_devices)
+            
     for p_bs in [1,32, logical_bs - 1, logical_bs]:
         masks, n_physical_batches, worker_batch_size, n_physical_batches_worker = setup_physical_batches_distributed(actual_logical_batch_size=logical_bs, physical_bs=p_bs,world_size=n_devices)
         assert sum(masks) == logical_bs
