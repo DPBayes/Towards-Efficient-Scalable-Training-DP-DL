@@ -123,10 +123,31 @@ def setup_physical_batches_distributed(
         world_size: int
 ):
     """
-    Same as the previous method, but fixed for the distributed case.
-    In this case, the logical batch must be divided into the number of workers
+    Computed the required number of physical batches so that n (full) physical batches are created, and those n batches must be distributed into m workers or devices.
+    In this case, the logical batch must be divided into the number of workers.
     But we must ensure that the worker size is divisible by the physical size, such that
     we ensure the use of the masking.
+
+    Parameters
+    ----------
+    actual_batch_size : int
+        The actual sampled logical batch size.
+    physical_bs : int
+        The physical batch size (depends on model size and memory).
+    world_size: int
+        Number of devices over which we will distribute.
+
+    Returns
+    -------
+    masks : jax.typing.ArrayLike
+        A mask to throw away n_masked_elements later as they are only required for computational reasons.
+    n_physical_batches : int
+        The number of physical batches.
+    worker_batch_size: int
+        The size of the per device batch size.
+    n_physical_batches_worker: int
+        The number of physical batches per device.
+
     """
     if physical_bs < 1:
         raise ValueError(f"physical_bs needs to be positive but it is {physical_bs}")
