@@ -173,7 +173,7 @@ def setup_physical_batches_distributed(
     return masks, n_physical_batches, worker_batch_size, n_physical_batches_worker
 
 
-@partial(jax.jit, static_argnums=(3,))
+@partial(jax.jit, static_argnums=(3,4,))
 def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState,
     batch_X: jax.typing.ArrayLike,
@@ -323,7 +323,7 @@ def update_model(state: train_state.TrainState, grads):
 ## Evaluation
 
 
-@jax.jit
+@partial(jax.jit,static_argnames=["resizer"])
 def compute_accuracy_for_batch(
     state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, resizer=None
 ):
@@ -345,7 +345,7 @@ def compute_accuracy_for_batch(
     return correct
 
 
-@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension"])
+@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension","resizer"])
 def test_body_fun(t, params, test_batch_size, orig_image_dimension):
     (state, accumulated_corrects, test_X, test_y) = params
     # slice
@@ -371,6 +371,7 @@ def model_evaluation(
     orig_image_dimension: int,
     batch_size: int = 50,
     use_gpu=True,
+    resizer=None
 ):
 
     accumulated_corrects = 0
@@ -385,7 +386,7 @@ def model_evaluation(
         0,
         n_test_batches,
         lambda t, params: test_body_fun(
-            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension
+            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension,resizer=resizer
         ),
         (state, accumulated_corrects, test_images, test_labels),
     )
