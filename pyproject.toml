@@ -1,0 +1,54 @@
+# pyproject.toml
+
+[project]
+name = "dpsgdjax"
+dynamic = ["version"] # use git tags for version, via setuptools_scm
+description = "Efficient DP-SGD in JAX"
+readme = "README.md"
+license = { file = "LICENSE" }
+dependencies = [
+    "jax >=0.4.30",
+    "flax >=0.10.0",
+    "transformers >= 4.45.1",
+    "datasets >= 3.0.0",
+    "dp-accounting==0.4.4",
+    "pillow>=10.0.0",
+    "ipykernel",
+]
+requires-python = ">=3.10"
+
+[tool.setuptools]
+include-package-data = true
+# Include examples in binary/wheel distribution:
+packages = ["dpsgdjax","dpsgdjax.examples"]
+package-dir = { "dpsgdjax" = "src", "dpsgdjax.examples" = "examples"}
+
+[tool.setuptools.package-data]
+# Make sure to include example Notebooks:
+#"dpsgdjax.examples" = ["*.ipynb"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
+[build-system]
+requires = ["setuptools >= 45", "setuptools_scm[toml] >= 6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 79
+
+[tool.isort]
+skip_glob = []
+line_length = 79
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+profile = "black"
+
+[tool.pycln]
+all = true
+
+[tool.setuptools_scm]

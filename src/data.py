@@ -54,7 +54,7 @@ def prepare_sharding():
     data_shard:  jax.sharding.NamedSharding
         A named sharding object, describes how to shard the data across devices.
         Data will be sharded without the need of explicitly dividing it. It will
-        shard over the first dimension.
+        shard over the first dimension, which in general is the batch dimension.
     model_shard:  jax.sharding.NamedSharding
         A named sharding object, describes how to shard the model across devices
         The model will be replicated on each device. So far we don't have a feature
@@ -62,7 +62,7 @@ def prepare_sharding():
         object must have an axis. If it is empty, it will replicate over the mesh.
     """
     mesh = jax.sharding.Mesh(jax.devices(), "devices")
-    
+
     data_shard = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec("devices"))
     model_shard = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec())
     return mesh, data_shard, model_shard

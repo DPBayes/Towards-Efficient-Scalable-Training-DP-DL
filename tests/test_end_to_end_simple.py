@@ -4,7 +4,6 @@ from collections import namedtuple
 import jax
 import jax.numpy as jnp
 import optax
-import ipdb
 
 from functools import partial
 from src.data import load_from_huggingface,prepare_sharding
