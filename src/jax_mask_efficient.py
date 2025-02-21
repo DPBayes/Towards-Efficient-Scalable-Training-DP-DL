@@ -346,7 +346,7 @@ def compute_accuracy_for_batch(
 
 
 @partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension","resizer"])
-def test_body_fun(t, params, test_batch_size, orig_image_dimension):
+def test_body_fun(t, params, test_batch_size, orig_image_dimension, resizer=None):
     (state, accumulated_corrects, test_X, test_y) = params
     # slice
     start_idx = t * test_batch_size
@@ -357,7 +357,7 @@ def test_body_fun(t, params, test_batch_size, orig_image_dimension):
     )
     yb = jax.lax.dynamic_slice(test_y, (start_idx,), (test_batch_size,))
 
-    n_corrects = compute_accuracy_for_batch(state, pb, yb)
+    n_corrects = compute_accuracy_for_batch(state, pb, yb, resizer)
 
     accumulated_corrects += n_corrects
 
