@@ -2,7 +2,7 @@
 
 (See '/research' for the code used in the benchmarks of our [paper](https://arxiv.org/abs/2406.17298)).
 
-## dpsgdjax package
+## jaxdpopt package
 
 Install using `pip install .` with Python>=3.10 in a fresh environment.
 
