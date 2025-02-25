@@ -229,7 +229,7 @@ class CrossEntropyLoss(LossFunction):
             self,
             state,
             num_classes,
-            resizer
+            resizer_fn
     ):
         """
         Initialize cross entropy loss
@@ -243,8 +243,8 @@ class CrossEntropyLoss(LossFunction):
         resizer_fn : Callable:
             Optional callable function, that resizes the inputs before loss computation
         """
-        super().__init__(state,num_classes,resizer)
-        if resizer is None:
+        super().__init__(state, num_classes, resizer_fn)
+        if resizer_fn is None:
             self.resizer_fn = lambda x:x
     
     def __call__(self, params, X, y):
@@ -268,7 +268,7 @@ def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState,
     batch_X: jax.typing.ArrayLike,
     batch_y: jax.typing.ArrayLike,
-    loss_fn: Callable
+    loss_fn: LossFunction
 ):
     """Computes the per-example gradients for a physical batch.
 
@@ -282,7 +282,7 @@ def compute_per_example_gradients_physical_batch(
         The labels of the physical batch.
     num_classes : int
         The number of classes for one-hot encoding.
-    resizer : function, optional
+    resizer_fn : function, optional
         A function to resize the input data. If None, defaults to a lambda that returns x.
 
     Returns
@@ -405,18 +405,18 @@ def update_model(state: train_state.TrainState, grads):
 ## Evaluation
 
 
-@partial(jax.jit,static_argnames=["resizer"])
+@partial(jax.jit,static_argnames=["resizer_fn"])
 def compute_accuracy_for_batch(
-    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, resizer=None
+    state: train_state.TrainState, batch_X: jax.typing.ArrayLike, batch_y: jax.typing.ArrayLike, resizer_fn=None
 ):
     """Computes accuracy for a single batch."""
-    if resizer is None:
-        resizer = lambda x: x
+    if resizer_fn is None:
+        resizer_fn = lambda x: x
 
     if batch_X.size == 0:
         return 0
 
-    resized_X = resizer(batch_X)
+    resized_X = resizer_fn(batch_X)
     logits = state.apply_fn(resized_X, state.params)
     if type(logits) is tuple:
         logits = logits[0]
@@ -427,8 +427,8 @@ def compute_accuracy_for_batch(
     return correct
 
 
-@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension","resizer"])
-def test_body_fun(t, params, test_batch_size, orig_image_dimension, resizer=None):
+@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension","resizer_fn"])
+def test_body_fun(t, params, test_batch_size, orig_image_dimension, resizer_fn=None):
     (state, accumulated_corrects, test_X, test_y) = params
     # slice
     start_idx = t * test_batch_size
@@ -439,7 +439,7 @@ def test_body_fun(t, params, test_batch_size, orig_image_dimension, resizer=None
     )
     yb = jax.lax.dynamic_slice(test_y, (start_idx,), (test_batch_size,))
 
-    n_corrects = compute_accuracy_for_batch(state, pb, yb, resizer)
+    n_corrects = compute_accuracy_for_batch(state, pb, yb, resizer_fn)
 
     accumulated_corrects += n_corrects
 
@@ -453,7 +453,7 @@ def model_evaluation(
     orig_image_dimension: int,
     batch_size: int = 50,
     use_gpu=True,
-    resizer=None
+    resizer_fn=None
 ):
 
     accumulated_corrects = 0
@@ -468,7 +468,7 @@ def model_evaluation(
         0,
         n_test_batches,
         lambda t, params: test_body_fun(
-            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension,resizer=resizer
+            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension,resizer_fn=resizer_fn
         ),
         (state, accumulated_corrects, test_images, test_labels),
     )

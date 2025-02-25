@@ -199,7 +199,7 @@ def test_compute_per_example_gradients_physical_batch():
     n = 20
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = np.ones((n,), dtype=int)
-    dummy_resizer = lambda x: x  # Dummy resizer
+    dummy_resizer = lambda x: x  # Dummy resizer_fn
 
     loss_fn = CrossEntropyLoss(
         state, 
@@ -296,19 +296,19 @@ def test_compute_accuracy_for_batch():
     # All correct
     batch_X = jnp.array([[0.9, 0.1], [0.2, 0.8]])
     batch_y = jnp.array([0, 1])
-    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
+    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer_fn=None)
     assert accuracy == 2
 
     # All wrong
     batch_X = jnp.array([[0.5, 0.9], [0.7, 0.8]])
     batch_y = jnp.array([0, 0])
-    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
+    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer_fn=None)
     assert accuracy == 0
 
     # Empty batch
     batch_X = jnp.array([]).reshape(0, 2)
     batch_y = jnp.array([])
-    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer=None)
+    accuracy = compute_accuracy_for_batch(state, batch_X, batch_y, resizer_fn=None)
     assert accuracy == 0
 
 
@@ -487,7 +487,7 @@ def test_reshape_fun():
     )
 
     acc_all_correct = model_evaluation(
-        state_correct, test_batch_images, test_batch_labels, 64, batch_size=100, use_gpu=False,resizer=normalize_and_reshape
+        state_correct, test_batch_images, test_batch_labels, 64, batch_size=100, use_gpu=False,resizer_fn=normalize_and_reshape
     )
 
         

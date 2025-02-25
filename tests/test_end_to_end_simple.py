@@ -84,13 +84,6 @@ def test_simple_end_to_end_non_DP():
         batch_X = train_images[indicies]
         batch_y = train_labels[indicies]
 
-        # def loss_fn(params, X, y):
-        #     resized_X = X
-        #     logits = state.apply_fn(resized_X, params=params)
-        #     one_hot = jax.nn.one_hot(y, num_classes=num_classes)
-        #     loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
-        #     return jnp.sum(loss)
-
         grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
         full_grads = grad_fn(batch_X, batch_y)
 
