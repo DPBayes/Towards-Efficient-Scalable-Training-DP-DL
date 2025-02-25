@@ -4,6 +4,8 @@ import jax
 import jax.numpy as jnp
 import optax
 from flax.training import train_state
+from abc import ABC, abstractmethod
+from typing import Callable
 
 ## define some jax utility functions
 
@@ -173,13 +175,100 @@ def setup_physical_batches_distributed(
     return masks, n_physical_batches, worker_batch_size, n_physical_batches_worker
 
 
-@partial(jax.jit, static_argnums=(3,4,))
+class LossFunction(ABC):
+    """Abstract class for loss functions implementations"""
+
+
+    def __init__(self, state: train_state.TrainState, num_classes: int, resizer_fn: Callable = None ):
+        """
+        Initialize the loss function.
+
+        Parameters:
+        
+        state : train_state.TrainState
+            The train state that contains the model, parameters and optimizer    
+        num_classes : int
+            For classification tasks, the loss needs the number of classes
+        resizer_fn : Callable:
+            Optional callable function, that resizes the inputs before loss computation
+                Expected signature: fn(input) -> Any
+                In case of not needing it, it can be left as None or as lambda x: x
+        """
+        super().__init__()
+        self.state = state
+        self.num_classes = num_classes
+        if resizer_fn is None:
+            self.resizer_fn = lambda x:x
+        else:
+            self.resizer_fn = resizer_fn
+
+    @abstractmethod
+    def __call__(self, params, X, y):
+        """
+        Compute the loss for the X inputs and y labels. It takes the inputs, and it uses the params to calculate the predictions.
+        A custom loss function should follow this signature, such that it is used during the gradient of the loss.
+
+        Parameters
+        ----------
+        params : jax.typing.ArrayLike
+            Parameters of the model
+        X : jax.typing.ArrayLike
+            Input data
+        y : jax.typing.ArrayLike
+            Labels
+
+        Returns
+        --------
+        Loss value as a scalar
+        """
+        pass
+
+class CrossEntropyLoss(LossFunction):
+
+    def __init___(
+            self,
+            state,
+            num_classes,
+            resizer
+    ):
+        """
+        Initialize cross entropy loss
+
+        Parameters
+        ----------
+        state : train_state.TrainState
+            The train state that contains the model, parameters and optimizer    
+        num_classes : int
+            For classification tasks, the loss needs the number of classes
+        resizer_fn : Callable:
+            Optional callable function, that resizes the inputs before loss computation
+        """
+        super().__init__(state,num_classes,resizer)
+        if resizer is None:
+            self.resizer_fn = lambda x:x
+    
+    def __call__(self, params, X, y):
+        """
+        Compute cross entropy loss
+
+        Return
+        ----------
+        Scalar loss value, as the sum of cross entropy loss between prediction and target
+
+        """
+        resized_X = self.resizer_fn(X)
+        logits = self.state.apply_fn(resized_X, params=params)[0]
+        one_hot = jax.nn.one_hot(y, num_classes=self.num_classes)
+        loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
+        return loss.sum()
+
+
+@partial(jax.jit, static_argnums=(3,))
 def compute_per_example_gradients_physical_batch(
     state: train_state.TrainState,
     batch_X: jax.typing.ArrayLike,
     batch_y: jax.typing.ArrayLike,
-    num_classes: int,
-    resizer=None,
+    loss_fn: Callable
 ):
     """Computes the per-example gradients for a physical batch.
 
@@ -201,16 +290,9 @@ def compute_per_example_gradients_physical_batch(
     px_grads : jax.typing.ArrayLike
         The per-sample gradients of the physical batch.
     """
-    if resizer is None:
-        resizer = lambda x: x
 
-    def loss_fn(params, X, y):
-        resized_X = resizer(X)
-        logits = state.apply_fn(resized_X, params=params)[0]
-        one_hot = jax.nn.one_hot(y, num_classes=num_classes)
-        loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
-        assert len(loss) == 1
-        return loss.sum()
+    if loss_fn is None:
+        raise ValueError("Loss function cannot be None")
 
     grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
     px_grads = jax.vmap(grad_fn, in_axes=(0, 0))(batch_X, batch_y)
