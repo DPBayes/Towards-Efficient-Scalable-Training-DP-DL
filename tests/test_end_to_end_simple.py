@@ -6,7 +6,11 @@ import jax.numpy as jnp
 import optax
 
 from functools import partial
-from src.data import load_from_huggingface,prepare_sharding
+from src.data import (
+    load_from_huggingface,
+    prepare_sharding, 
+    normalize_and_reshape,
+)
 from src.dp_accounting_utils import calculate_noise, compute_epsilon
 from src.jax_mask_efficient import (
     add_Gaussian_noise,
@@ -20,6 +24,7 @@ from src.jax_mask_efficient import (
     setup_physical_batches,
     setup_physical_batches_distributed,
     update_model,
+    CrossEntropyLoss
 )
 from src.models import create_train_state
 
@@ -63,6 +68,12 @@ def test_simple_end_to_end_non_DP():
         optimizer_config=optimizer_config,
     )
 
+    loss_fn = CrossEntropyLoss(
+        state, 
+        num_classes, 
+        None
+    )
+
     for t in range(num_steps):
         sampling_rng = jax.random.PRNGKey(t + 1)
         batch_rng, binomial_rng, noise_rng = jax.random.split(sampling_rng, 3)
@@ -71,13 +82,6 @@ def test_simple_end_to_end_non_DP():
 
         batch_X = train_images[indicies]
         batch_y = train_labels[indicies]
-
-        def loss_fn(params, X, y):
-            resized_X = X
-            logits = state.apply_fn(resized_X, params=params)
-            one_hot = jax.nn.one_hot(y, num_classes=num_classes)
-            loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
-            return jnp.sum(loss)
 
         grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
         full_grads = grad_fn(batch_X, batch_y)
@@ -140,6 +144,12 @@ def test_simple_end_to_end():
         accountant=accountant,
     )
 
+    loss_fn = CrossEntropyLoss(
+        state, 
+        num_classes, 
+        None
+    )
+
     def process_physical_batch(t, params_tuple):
         state, accumulated_clipped_grads, logical_batch_X, logical_batch_y, masks = params_tuple
         start_idx = t * physical_bs
@@ -150,7 +160,7 @@ def test_simple_end_to_end():
         )
         yb = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
         mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
-        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb, num_classes)
+        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb, loss_fn)
         clipped_grads_from_pb = clip_physical_batch(per_example_gradients, clipping_norm)
         sum_of_clipped_grads_from_pb = accumulate_physical_batch(clipped_grads_from_pb, mask)
         accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)
@@ -248,6 +258,12 @@ def test_simple_end_to_end_dist():
         accountant=accountant,
     )
 
+    loss_fn = CrossEntropyLoss(
+        state, 
+        num_classes, 
+        None
+    )
+
     #Get the mesh and sharding objects. This process is done only once.
     mesh, data_shard, model_shard = prepare_sharding()
 
@@ -261,7 +277,7 @@ def test_simple_end_to_end_dist():
         )
         yb = jax.lax.dynamic_slice(logical_batch_y, (start_idx,), (physical_bs,))
         mask = jax.lax.dynamic_slice(masks, (start_idx,), (physical_bs,))
-        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb, num_classes)
+        per_example_gradients = compute_per_example_gradients_physical_batch(state, pb, yb, loss_fn)
         clipped_grads_from_pb = clip_physical_batch(per_example_gradients, clipping_norm)
         sum_of_clipped_grads_from_pb = accumulate_physical_batch(clipped_grads_from_pb, mask)
         accumulated_clipped_grads = add_trees(accumulated_clipped_grads, sum_of_clipped_grads_from_pb)

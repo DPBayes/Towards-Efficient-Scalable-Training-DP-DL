@@ -59,7 +59,7 @@ def load_model(rng, model_name, dimension, num_classes):
                 x = nn.Dense(features=256)(x)
                 x = nn.relu(x)
                 x = nn.Dense(features=num_classes)(x)
-                return x
+                return (x,)
 
         model = CNN()
         input_shape = (1, 3, dimension, dimension)
