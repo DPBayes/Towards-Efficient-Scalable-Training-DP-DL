@@ -21,8 +21,11 @@ from src.jax_mask_efficient import (
     poisson_sample_logical_batch_size,
     setup_physical_batches,
     update_model,
-    setup_physical_batches_distributed
+    setup_physical_batches_distributed,
+    CrossEntropyLoss
 )
+
+from src.data import normalize_and_reshape
 
 
 def test_get_padded_logical_batch():
@@ -173,7 +176,7 @@ def _setup_state():
             x = nn.Dense(features=256)(x)
             x = nn.relu(x)
             x = nn.Dense(features=100)(x)
-            return x
+            return (x,)
 
     model = CNN()
 
@@ -197,17 +200,24 @@ def test_compute_per_example_gradients_physical_batch():
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = np.ones((n,), dtype=int)
     dummy_resizer = lambda x: x  # Dummy resizer
-    px_grads = compute_per_example_gradients_physical_batch(
-        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100, resizer=None
+
+    loss_fn = CrossEntropyLoss(
+        state, 
+        100, 
+        dummy_resizer
     )
 
-    def loss_fn(params, X, y):
-        resized_X = dummy_resizer(X)
-        logits = state.apply_fn(resized_X, params=params)
-        one_hot = jax.nn.one_hot(y, num_classes=100)
-        loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
-        # assert len(loss) == 1
-        return np.sum(loss)
+    # def loss_fn(params, X, y):
+    #     resized_X = dummy_resizer(X)
+    #     logits = state.apply_fn(resized_X, params=params)
+    #     one_hot = jax.nn.one_hot(y, num_classes=100)
+    #     loss = optax.softmax_cross_entropy(logits=logits, labels=one_hot).flatten()
+    #     # assert len(loss) == 1
+    #     return np.sum(loss)
+    
+    px_grads = compute_per_example_gradients_physical_batch(
+        state=state, batch_X=batch_X, batch_y=batch_y, loss_fn=loss_fn
+    )
 
     grad_fn = lambda X, y: jax.grad(loss_fn)(state.params, X, y)
     full_grads = grad_fn(batch_X.reshape(n, 3, 32, 32), batch_y)
@@ -227,8 +237,9 @@ def test_clip_physical_batch():
 
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = jnp.ones((n,), dtype=int)
+    loss_fn = CrossEntropyLoss(state,100,lambda x:x)
     px_grads = compute_per_example_gradients_physical_batch(
-        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100, resizer=None
+        state=state, batch_X=batch_X, batch_y=batch_y, loss_fn=loss_fn
     )
 
     big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
@@ -257,8 +268,9 @@ def test_accumulate_physical_batch():
 
     batch_X = np.random.random_sample((n, 1, 3, 32, 32))
     batch_y = jnp.ones((n,), dtype=int)
+    loss_fn = CrossEntropyLoss(state,100,None)
     px_grads = compute_per_example_gradients_physical_batch(
-        state=state, batch_X=batch_X, batch_y=batch_y, num_classes=100, resizer=None
+        state=state, batch_X=batch_X, batch_y=batch_y, loss_fn=loss_fn
     )
 
     big_px_grads = jax.tree.map(lambda x: jnp.ones_like(x) * LARGE_NUMBER, px_grads)
@@ -461,6 +473,24 @@ def test_add_Gaussian_noise_independence():
     noise_b = out["b"] - accumulated["b"]
     corr = np.corrcoef(np.array(noise_a).flatten(), np.array(noise_b).flatten())[0, 1]
     assert abs(corr) < 0.2, f"Noise between leaves are not independent, correlation={corr}"
+
+def test_reshape_fun():
+
+    test_batch_images = jnp.ones((100,3,64,64))
+
+    test_batch_labels = jnp.zeros((100,), dtype=jnp.int32)
+    
+    state_correct = train_state.TrainState.create(
+        apply_fn=lambda x, params: (jnp.array([[0.9, 0.1]] * x.shape[0]), None),
+        params={},
+        tx=optax.sgd(learning_rate=0.1),
+    )
+
+    acc_all_correct = model_evaluation(
+        state_correct, test_batch_images, test_batch_labels, 64, batch_size=100, use_gpu=False,resizer=normalize_and_reshape
+    )
+
+        
 
 
 if __name__ == "__main__":

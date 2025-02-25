@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import optax
 import pytest
 from flax.training import train_state
+from src.data import normalize_and_reshape, load_dataset, load_from_huggingface
 
 from src.models import create_train_state, load_model
 
@@ -32,7 +33,7 @@ def test_create_train_state_small():
     # test model apply function
     rng = jax.random.PRNGKey(42)
     dummy_input = jax.random.normal(rng, (batch_size, 3, image_dimension, image_dimension))
-    logits = state.apply_fn(dummy_input, state.params)
+    logits = state.apply_fn(dummy_input, state.params)[0]
     assert logits.shape == (batch_size, num_classes)
 
 
@@ -59,7 +60,7 @@ def test_load_model_small():
 
     # test model apply function
     dummy_input = jax.random.normal(rng, (batch_size, 3, image_dimension, image_dimension))
-    logits = model.apply({"params": params}, dummy_input)
+    logits = model.apply({"params": params}, dummy_input)[0]
     assert logits.shape == (batch_size, num_classes)
 
 
@@ -112,3 +113,54 @@ def test_create_train_state_freeze_layers():
                 assert not jnp.allclose(
                     state_after_update.params[layer][subkey], params[subkey]
                 ), f"Layer {layer} was not updated although it should be trainable."
+
+
+def test_models_outputs():
+
+    lr = 1e-3
+    num_steps = 120
+
+    train_images, train_labels, test_images, test_labels = load_from_huggingface(
+        "uoft-cs/cifar10", cache_dir=None, feature_name="img"
+    )
+    ORIG_IMAGE_DIMENSION, RESIZED_IMAGE_DIMENSION = 32, 32
+    train_images = (
+        train_images[train_labels < 2]
+        .transpose(0, 3, 1, 2)
+        .reshape(-1, 1, 3, ORIG_IMAGE_DIMENSION, ORIG_IMAGE_DIMENSION)
+    )
+    train_labels = train_labels[train_labels < 2]
+    test_images = test_images[test_labels < 2].transpose(0, 3, 1, 2)
+    test_labels = test_labels[test_labels < 2]
+    batch_size = 100
+
+    num_classes = 2
+    dataset_size = len(train_labels)
+
+    optimizer_config = namedtuple("Config", ["learning_rate"])
+    optimizer_config.learning_rate = lr
+
+    state_small = create_train_state(
+        model_name="small",
+        num_classes=num_classes,
+        image_dimension=RESIZED_IMAGE_DIMENSION,
+        optimizer_config=optimizer_config,
+    )
+
+    state_vit = create_train_state(
+        model_name='google/vit-base-patch16-224-in21k',
+        num_classes=num_classes,
+        image_dimension=RESIZED_IMAGE_DIMENSION,
+        optimizer_config=optimizer_config,
+    )
+
+
+    logits = state_small.apply_fn(test_images[:10], params=state_small.params)
+    print(logits)
+    
+    logits_vit = state_vit.apply_fn(normalize_and_reshape(test_images[:10]), params=state_vit.params)
+    print(logits_vit)
+
+    assert isinstance(logits,tuple) and isinstance(logits_vit,tuple)
+    assert len(logits[0]) == len(logits_vit[0])
+    
