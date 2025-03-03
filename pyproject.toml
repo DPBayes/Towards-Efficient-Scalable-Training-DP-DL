@@ -1,9 +1,9 @@
 # pyproject.toml
 
 [project]
-name = "dpsgdjax"
+name = "jaxdpopt"
 dynamic = ["version"] # use git tags for version, via setuptools_scm
-description = "Efficient DP-SGD in JAX"
+description = "Efficient DP optimization in JAX"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
@@ -20,8 +20,8 @@ requires-python = ">=3.10"
 [tool.setuptools]
 include-package-data = true
 # Include examples in binary/wheel distribution:
-packages = ["dpsgdjax","dpsgdjax.examples"]
-package-dir = { "dpsgdjax" = "src", "dpsgdjax.examples" = "examples"}
+packages = ["jaxdpopt","jaxdpopt.examples"]
+package-dir = { "jaxdpopt" = "jaxdpopt", "jaxdpopt.examples" = "examples"}
 
 [tool.setuptools.package-data]
 # Make sure to include example Notebooks:
