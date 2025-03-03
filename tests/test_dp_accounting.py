@@ -1,5 +1,5 @@
 import pytest
-from src.dp_accounting_utils import calculate_noise, compute_epsilon
+from jaxdpopt.dp_accounting_utils import calculate_noise, compute_epsilon
 import numpy as np
 
 def test_dp_accounting_roundtrip_rdp():

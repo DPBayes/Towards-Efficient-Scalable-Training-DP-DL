@@ -9,7 +9,7 @@ import pytest
 import scipy.stats as stats
 from flax.training import train_state
 
-from src.jax_mask_efficient import (
+from jaxdpopt.jax_mask_efficient import (
     accumulate_physical_batch,
     add_Gaussian_noise,
     clip_physical_batch,
@@ -24,7 +24,7 @@ from src.jax_mask_efficient import (
     CrossEntropyLoss
 )
 
-from src.data import normalize_and_reshape
+from jaxdpopt.data import normalize_and_reshape
 
 
 def test_get_padded_logical_batch():

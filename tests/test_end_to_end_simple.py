@@ -6,13 +6,13 @@ import jax.numpy as jnp
 import optax
 
 from functools import partial
-from src.data import (
+from jaxdpopt.data import (
     load_from_huggingface,
     prepare_sharding, 
     normalize_and_reshape,
 )
-from src.dp_accounting_utils import calculate_noise, compute_epsilon
-from src.jax_mask_efficient import (
+from jaxdpopt.dp_accounting_utils import calculate_noise, compute_epsilon
+from jaxdpopt.jax_mask_efficient import (
     add_Gaussian_noise,
     add_trees,
     clip_physical_batch,
@@ -26,7 +26,7 @@ from src.jax_mask_efficient import (
     update_model,
     CrossEntropyLoss
 )
-from src.models import create_train_state
+from jaxdpopt.models import create_train_state
 
 os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=8'
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"

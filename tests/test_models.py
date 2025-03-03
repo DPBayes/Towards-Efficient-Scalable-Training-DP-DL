@@ -5,9 +5,9 @@ import jax.numpy as jnp
 import optax
 import pytest
 from flax.training import train_state
-from src.data import normalize_and_reshape, load_dataset, load_from_huggingface
+from jaxdpopt.data import normalize_and_reshape, load_dataset, load_from_huggingface
 
-from src.models import create_train_state, load_model
+from jaxdpopt.models import create_train_state, load_model
 
 
 def test_create_train_state_small():
