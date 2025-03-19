@@ -318,6 +318,7 @@ def test_model_evaluation_combined():
     orig_image_dimension = 2
     batch_size = 2
     n_images = 4
+    data_shape = (3, orig_image_dimension, orig_image_dimension)
     test_images = jnp.zeros((n_images, 3, orig_image_dimension, orig_image_dimension))
     test_labels = jnp.zeros((n_images,), dtype=jnp.int32)
 
@@ -328,7 +329,7 @@ def test_model_evaluation_combined():
         tx=optax.sgd(learning_rate=0.1),
     )
     acc_all_correct = model_evaluation(
-        state_correct, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False
+        state_correct, test_images, test_labels, data_shape, batch_size=batch_size, use_gpu=False
     )
     assert acc_all_correct == 1.0
 
@@ -339,7 +340,7 @@ def test_model_evaluation_combined():
         tx=optax.sgd(learning_rate=0.1),
     )
     acc_zero = model_evaluation(
-        state_wrong, test_images, test_labels, orig_image_dimension, batch_size=batch_size, use_gpu=False
+        state_wrong, test_images, test_labels, data_shape, batch_size=batch_size, use_gpu=False
     )
     assert acc_zero == 0.0
 
@@ -359,7 +360,7 @@ def test_model_evaluation_combined():
     test_images_mixed = jnp.concatenate([batch1, batch2], axis=0)
     test_labels_mixed = jnp.zeros((n_images,), dtype=jnp.int32)
     acc_intermediate = model_evaluation(
-        state_mixed, test_images_mixed, test_labels_mixed, orig_image_dimension, batch_size=batch_size, use_gpu=False
+        state_mixed, test_images_mixed, test_labels_mixed, data_shape, batch_size=batch_size, use_gpu=False
     )
     assert acc_intermediate == 0.5
 
@@ -373,7 +374,7 @@ def test_model_evaluation_combined():
         state_mixed,
         test_images_incomplete,
         test_labels_incomplete,
-        orig_image_dimension,
+        data_shape,
         batch_size=batch_size,
         use_gpu=False,
     )
@@ -477,6 +478,8 @@ def test_reshape_fun():
 
     test_batch_images = jnp.ones((100,3,64,64))
 
+    data_shape = (3,64,64)
+
     test_batch_labels = jnp.zeros((100,), dtype=jnp.int32)
     
     state_correct = train_state.TrainState.create(
@@ -486,7 +489,7 @@ def test_reshape_fun():
     )
 
     acc_all_correct = model_evaluation(
-        state_correct, test_batch_images, test_batch_labels, 64, batch_size=100, use_gpu=False,resizer_fn=normalize_and_reshape
+        state_correct, test_batch_images, test_batch_labels, data_shape, batch_size=100, use_gpu=False,resizer_fn=normalize_and_reshape
     )
 
         

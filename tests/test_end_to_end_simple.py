@@ -45,6 +45,8 @@ def test_simple_end_to_end_non_DP():
         "uoft-cs/cifar10", cache_dir=None, feature_name="img"
     )
     ORIG_IMAGE_DIMENSION, RESIZED_IMAGE_DIMENSION = 32, 32
+    N_CHANNELS = 3
+    ORIG_IMAGE_SHAPE = (N_CHANNELS, ORIG_IMAGE_DIMENSION, ORIG_IMAGE_DIMENSION)
     train_images = (
         train_images[train_labels < 2]
         .transpose(0, 3, 1, 2)
@@ -89,7 +91,7 @@ def test_simple_end_to_end_non_DP():
         state = jax.block_until_ready(update_model(state, full_grads))
 
     acc_last = model_evaluation(
-        state, test_images, test_labels, batch_size=10, use_gpu=USE_GPU, orig_image_dimension=ORIG_IMAGE_DIMENSION
+        state, test_images, test_labels, batch_size=10, use_gpu=USE_GPU, orig_img_shape=ORIG_IMAGE_SHAPE
     )
 
     acc_train = model_evaluation(
@@ -98,7 +100,7 @@ def test_simple_end_to_end_non_DP():
         train_labels,
         batch_size=10,
         use_gpu=USE_GPU,
-        orig_image_dimension=ORIG_IMAGE_DIMENSION,
+        orig_img_shape=ORIG_IMAGE_SHAPE,
     )
 
     assert acc_last > 0.8
@@ -117,6 +119,8 @@ def test_simple_end_to_end():
         "uoft-cs/cifar10", cache_dir=None, feature_name="img"
     )
     ORIG_IMAGE_DIMENSION, RESIZED_IMAGE_DIMENSION = 32, 32
+    N_CHANNELS = 3
+    ORIG_IMAGE_SHAPE = (N_CHANNELS, ORIG_IMAGE_DIMENSION, ORIG_IMAGE_DIMENSION)
     train_images = train_images[train_labels < 2].transpose(0, 3, 1, 2)
     train_labels = train_labels[train_labels < 2]
     test_images = test_images[test_labels < 2].transpose(0, 3, 1, 2)
@@ -210,7 +214,7 @@ def test_simple_end_to_end():
     )
 
     acc_last = model_evaluation(
-        state, test_images, test_labels, batch_size=10, use_gpu=USE_GPU, orig_image_dimension=ORIG_IMAGE_DIMENSION
+        state, test_images, test_labels, batch_size=10, use_gpu=USE_GPU, orig_img_shape=ORIG_IMAGE_SHAPE
     )
 
     assert epsilon <= target_epsilon
@@ -231,6 +235,8 @@ def test_simple_end_to_end_dist():
         "uoft-cs/cifar10", cache_dir=None, feature_name="img"
     )
     ORIG_IMAGE_DIMENSION, RESIZED_IMAGE_DIMENSION = 32, 32
+    N_CHANNELS = 3
+    ORIG_IMAGE_SHAPE = (N_CHANNELS, ORIG_IMAGE_DIMENSION, ORIG_IMAGE_DIMENSION)
     train_images = train_images[train_labels < 2].transpose(0, 3, 1, 2)
     train_labels = train_labels[train_labels < 2]
     test_images = test_images[test_labels < 2].transpose(0, 3, 1, 2)
@@ -368,7 +374,7 @@ def test_simple_end_to_end_dist():
     )
 
     acc_last = model_evaluation(
-        state, test_images, test_labels, batch_size=10, use_gpu=USE_GPU, orig_image_dimension=ORIG_IMAGE_DIMENSION
+        state, test_images, test_labels, batch_size=10, use_gpu=USE_GPU, orig_img_shape=ORIG_IMAGE_SHAPE
     )
 
     assert n_devices == 8
