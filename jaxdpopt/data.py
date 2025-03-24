@@ -6,7 +6,7 @@ def normalize_and_reshape(imgs):
     normalized = ((imgs / 255.0) - 0.5) / 0.5
     return jax.image.resize(normalized, shape=(len(normalized), 3, 224, 224), method="bilinear")
 
-def normalize_and_reshape_(imgs,scale,mean,std,shape):
+def normalize_and_reshape_generic(imgs, scale: float, mean: float, std: float, shape: int):
     normalized_data = ((imgs/scale) - mean)/std
     return jax.image.resize(normalized_data, shape = shape, method = 'bilinear')
 
