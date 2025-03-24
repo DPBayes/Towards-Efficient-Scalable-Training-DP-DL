@@ -1,4 +1,4 @@
-from src.data import load_from_huggingface
+from jaxdpopt.data import load_from_huggingface
 import jax
 
 

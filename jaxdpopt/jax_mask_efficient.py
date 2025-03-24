@@ -427,15 +427,20 @@ def compute_accuracy_for_batch(
     return correct
 
 
-@partial(jax.jit, static_argnames=["test_batch_size", "orig_image_dimension","resizer_fn"])
-def test_body_fun(t, params, test_batch_size, orig_image_dimension, resizer_fn=None):
+@partial(jax.jit, static_argnames=["test_batch_size", "orig_img_shape","resizer_fn"])
+def test_body_fun(t, params, test_batch_size, orig_img_shape, resizer_fn=None):
     (state, accumulated_corrects, test_X, test_y) = params
     # slice
     start_idx = t * test_batch_size
+
+    start_shape = (start_idx,) + (0,)*len(orig_img_shape)
+
+    test_batch_shape = (test_batch_size,) + orig_img_shape
+
     pb = jax.lax.dynamic_slice(
         test_X,
-        (start_idx, 0, 0, 0),
-        (test_batch_size, 3, orig_image_dimension, orig_image_dimension),
+        start_shape,
+        test_batch_shape,
     )
     yb = jax.lax.dynamic_slice(test_y, (start_idx,), (test_batch_size,))
 
@@ -450,7 +455,7 @@ def model_evaluation(
     state: train_state.TrainState,
     test_images: jax.typing.ArrayLike,
     test_labels: jax.typing.ArrayLike,
-    orig_image_dimension: int,
+    orig_img_shape: tuple,
     batch_size: int = 50,
     use_gpu=True,
     resizer_fn=None
@@ -468,7 +473,7 @@ def model_evaluation(
         0,
         n_test_batches,
         lambda t, params: test_body_fun(
-            t, params, test_batch_size=batch_size, orig_image_dimension=orig_image_dimension,resizer_fn=resizer_fn
+            t, params, test_batch_size=batch_size, orig_img_shape=orig_img_shape,resizer_fn=resizer_fn
         ),
         (state, accumulated_corrects, test_images, test_labels),
     )
