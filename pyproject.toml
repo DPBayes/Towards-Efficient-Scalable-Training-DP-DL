@@ -1,18 +1,25 @@
 # pyproject.toml
 
+[build-system]
+requires = ["setuptools >= 61.0.0", "setuptools_scm[toml] >= 6.2"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "jaxdpopt"
-dynamic = ["version"] # use git tags for version, via setuptools_scm
+version = "0.0.1"
+#dynamic = ["version"] # use git tags for version, via setuptools_scm
 description = "Efficient DP optimization in JAX"
 readme = "README.md"
+authors = [{ name = "Sebastian Rodriguez", email = "sebastian.rodriguez@helsinki.fi" }, { name = "Marlon Tobaben", email = "marlon.tobaben@helsinki.fi" }]
 license = { file = "LICENSE" }
+keywords = ["differential privacy", "jax", "DPSGD"]
 dependencies = [
-    "jax >=0.4.30",
-    "flax >=0.10.0",
+    "jax >= 0.4.30",
+    "flax >= 0.10.0",
     "transformers >= 4.45.1",
     "datasets >= 3.0.0",
-    "dp-accounting==0.4.4",
-    "pillow>=10.0.0",
+    "dp-accounting >= 0.4.4",
+    "pillow >= 10.0.0",
     "ipykernel",
 ]
 requires-python = ">=3.10"
@@ -32,9 +39,8 @@ dev = [
     "pytest"
 ]
 
-[build-system]
-requires = ["setuptools >= 45", "setuptools_scm[toml] >= 6.2"]
-build-backend = "setuptools.build_meta"
+[project.urls]
+Homepage = "https://github.com/DPBayes/Towards-Efficient-Scalable-Training-DP-DL"
 
 [tool.black]
 line-length = 79
